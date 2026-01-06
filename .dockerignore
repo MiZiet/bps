@@ -1,0 +1,28 @@
+# Dependencies
+node_modules
+
+# Build output
+dist
+
+# Test files
+*.spec.ts
+test/
+coverage/
+
+# Development files
+.git
+.gitignore
+.env*
+!.env.example
+*.md
+.idea
+.vscode
+
+# Uploaded files (will be mounted as volume)
+uploads/*
+!uploads/.gitkeep
+
+# Sample files
+*.xlsx
+scripts/
+

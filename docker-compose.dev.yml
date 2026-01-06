@@ -1,0 +1,15 @@
+# Development docker-compose - only runs dependencies (MongoDB)
+# Use this when running the app locally with `pnpm start:dev`
+
+services:
+  mongo:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    restart: unless-stopped
+
+volumes:
+  mongo_data:
+

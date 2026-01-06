@@ -8,6 +8,7 @@ A NestJS service for processing reservation files (XLSX).
 - ✅ File validation (only `.xlsx` files accepted)
 - ✅ File size limit (10MB)
 - ✅ Optional API key authentication
+- ✅ Docker & Docker Compose support
 
 ## Tech Stack
 
@@ -46,6 +47,9 @@ src/
 uploads/                       # Uploaded files are stored here
 scripts/
 └── generate-sample.js         # Script to generate sample XLSX file
+Dockerfile                     # Docker image definition
+docker-compose.yml             # Full stack (app + MongoDB)
+docker-compose.dev.yml         # Development (MongoDB only)
 ```
 
 ## Installation
@@ -62,14 +66,37 @@ Environment variables (`.env`):
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `API_KEY` | API key for authentication (optional) | empty (auth disabled) |
+| `MONGODB_URI` | MongoDB connection string | `mongodb://localhost:27017/booking-service` |
 
 ## Running the App
 
-```bash
-# Development (watch mode)
-pnpm start:dev
+### With Docker (Recommended)
 
-# Production
+```bash
+# Start all services (app + MongoDB)
+docker-compose up -d
+
+# View logs
+docker-compose logs -f app
+
+# Stop services
+docker-compose down
+```
+
+### Local Development
+
+```bash
+# Start MongoDB only
+docker-compose -f docker-compose.dev.yml up -d
+
+# Start app in watch mode
+pnpm start:dev
+```
+
+### Production (without Docker)
+
+```bash
+pnpm build
 pnpm start:prod
 ```
 
