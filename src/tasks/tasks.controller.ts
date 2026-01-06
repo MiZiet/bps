@@ -1,9 +1,12 @@
 import {
   Controller,
   Post,
+  Get,
+  Param,
   UseInterceptors,
   UploadedFile,
   BadRequestException,
+  NotFoundException,
   Logger,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -67,6 +70,33 @@ export class TasksController {
     return {
       message: 'File uploaded successfully',
       taskId: task._id.toString(),
+    };
+  }
+
+  /**
+   * GET /tasks/status/:taskId
+   *
+   * Returns the current status of a task and any error report.
+   *
+   * Usage:
+   *   curl http://localhost:3000/tasks/status/507f1f77bcf86cd799439011
+   */
+  @Get('status/:taskId')
+  async getTaskStatus(@Param('taskId') taskId: string) {
+    this.logger.log(`Getting status for task ${taskId}`);
+
+    const task = await this.tasksService.findById(taskId);
+
+    if (!task) {
+      throw new NotFoundException(`Task with ID ${taskId} not found`);
+    }
+
+    return {
+      taskId: task._id.toString(),
+      status: task.status,
+      createdAt: task.createdAt,
+      updatedAt: task.updatedAt,
+      errorReport: task.errorReport,
     };
   }
 }

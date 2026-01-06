@@ -133,16 +133,67 @@ x-api-key: your-secret-api-key  # Required if API_KEY is set
 - `401` - Missing x-api-key header (when API_KEY is configured)
 - `401` - Invalid API key
 
+### Get Task Status
+
+```http
+GET /tasks/status/:taskId
+x-api-key: your-secret-api-key  # Required if API_KEY is set
+```
+
+**Response:**
+```json
+{
+  "taskId": "507f1f77bcf86cd799439011",
+  "status": "PENDING",
+  "createdAt": "2026-01-06T12:00:00.000Z",
+  "updatedAt": "2026-01-06T12:00:00.000Z",
+  "errorReport": []
+}
+```
+
+**Status values:**
+- `PENDING` - Task created, waiting to be processed
+- `IN_PROGRESS` - Task is being processed
+- `COMPLETED` - Task finished successfully
+- `FAILED` - Task failed (check `errorReport` for details)
+
+**Error report format (when status is FAILED):**
+```json
+{
+  "taskId": "507f1f77bcf86cd799439011",
+  "status": "FAILED",
+  "errorReport": [
+    {
+      "row": 2,
+      "reason": "Invalid date format",
+      "suggestion": "Use YYYY-MM-DD format"
+    }
+  ]
+}
+```
+
+**Errors:**
+- `401` - Missing x-api-key header (when API_KEY is configured)
+- `401` - Invalid API key
+- `404` - Task not found
+
 ### Example with cURL
 
 ```bash
-# Without API key (when API_KEY env is not set)
+# Upload file (without API key)
 curl -X POST http://localhost:3000/tasks/upload -F "file=@sample-reservations.xlsx"
 
-# With API key
+# Upload file (with API key)
 curl -X POST http://localhost:3000/tasks/upload \
   -H "x-api-key: your-secret-api-key" \
   -F "file=@sample-reservations.xlsx"
+
+# Get task status
+curl http://localhost:3000/tasks/status/507f1f77bcf86cd799439011
+
+# Get task status (with API key)
+curl http://localhost:3000/tasks/status/507f1f77bcf86cd799439011 \
+  -H "x-api-key: your-secret-api-key"
 ```
 
 ### Example with HTTP file (JetBrains IDE)
@@ -178,7 +229,7 @@ This creates `sample-reservations.xlsx` with example reservation data:
 
 ## TODO (Remaining Features)
 
-- [ ] `GET /tasks/status/:taskId` - Check task status endpoint
+- [x] `GET /tasks/status/:taskId` - Check task status endpoint
 - [ ] `GET /tasks/report/:taskId` - Download error report endpoint
 - [ ] BullMQ queue for async file processing
 - [ ] XLSX file parsing and validation

@@ -17,6 +17,15 @@ export enum TaskStatus {
   FAILED = 'FAILED',
 }
 
+/**
+ * Error report item for invalid records in XLSX file
+ */
+export interface ErrorReportItem {
+  row: number;
+  reason: string;
+  suggestion: string;
+}
+
 @Schema({ timestamps: true })
 export class Task {
   /**
@@ -30,6 +39,12 @@ export class Task {
    */
   @Prop({ required: true, enum: TaskStatus, default: TaskStatus.PENDING })
   status: TaskStatus;
+
+  /**
+   * Error report for invalid records (populated after processing)
+   */
+  @Prop({ type: Array, default: [] })
+  errorReport: ErrorReportItem[];
 
   /**
    * Automatically managed by Mongoose (timestamps: true)

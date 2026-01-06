@@ -17,6 +17,14 @@ interface UploadResponse {
   taskId: string;
 }
 
+interface StatusResponse {
+  taskId: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  errorReport: Array<{ row: number; reason: string; suggestion: string }>;
+}
+
 interface ErrorResponse {
   message: string;
   statusCode: number;
@@ -25,6 +33,7 @@ interface ErrorResponse {
 describe('TasksController (e2e)', () => {
   const testFilePath = join(__dirname, 'test-file.xlsx');
   const mockObjectId = new Types.ObjectId();
+  const mockDate = new Date();
 
   // Mock TasksService to avoid MongoDB dependency in tests
   const mockTasksService = {
@@ -32,8 +41,11 @@ describe('TasksController (e2e)', () => {
       _id: mockObjectId,
       filePath,
       status: TaskStatus.PENDING,
-      createdAt: new Date(),
+      createdAt: mockDate,
+      updatedAt: mockDate,
+      errorReport: [],
     })),
+    findById: jest.fn(),
   };
 
   beforeAll(() => {
@@ -122,6 +134,40 @@ describe('TasksController (e2e)', () => {
 
       expect(body.message).toBe('No file provided');
     });
+
+    describe('GET /tasks/status/:taskId', () => {
+      it('should return task status when task exists', async () => {
+        mockTasksService.findById.mockResolvedValue({
+          _id: mockObjectId,
+          status: TaskStatus.PENDING,
+          createdAt: mockDate,
+          updatedAt: mockDate,
+          errorReport: [],
+        });
+
+        const response = await request(server)
+          .get(`/tasks/status/${mockObjectId.toString()}`)
+          .expect(200);
+
+        const body = response.body as StatusResponse;
+
+        expect(body.taskId).toBe(mockObjectId.toString());
+        expect(body.status).toBe(TaskStatus.PENDING);
+        expect(body.errorReport).toEqual([]);
+      });
+
+      it('should return 404 when task does not exist', async () => {
+        mockTasksService.findById.mockResolvedValue(null);
+
+        const response = await request(server)
+          .get('/tasks/status/non-existent-id')
+          .expect(404);
+
+        const body = response.body as ErrorResponse;
+
+        expect(body.message).toBe('Task with ID non-existent-id not found');
+      });
+    });
   });
 
   describe('with API key configured', () => {
@@ -193,6 +239,68 @@ describe('TasksController (e2e)', () => {
       const body = response.body as ErrorResponse;
 
       expect(body.message).toBe('Invalid API key');
+    });
+
+    describe('GET /tasks/status/:taskId', () => {
+      it('should return task status with valid API key', async () => {
+        mockTasksService.findById.mockResolvedValue({
+          _id: mockObjectId,
+          status: TaskStatus.COMPLETED,
+          createdAt: mockDate,
+          updatedAt: mockDate,
+          errorReport: [],
+        });
+
+        const response = await request(server)
+          .get(`/tasks/status/${mockObjectId.toString()}`)
+          .set('x-api-key', validApiKey)
+          .expect(200);
+
+        const body = response.body as StatusResponse;
+
+        expect(body.taskId).toBe(mockObjectId.toString());
+        expect(body.status).toBe(TaskStatus.COMPLETED);
+      });
+
+      it('should return task with error report when failed', async () => {
+        const errorReport = [
+          {
+            row: 2,
+            reason: 'Invalid date format',
+            suggestion: 'Use YYYY-MM-DD format',
+          },
+        ];
+
+        mockTasksService.findById.mockResolvedValue({
+          _id: mockObjectId,
+          status: TaskStatus.FAILED,
+          createdAt: mockDate,
+          updatedAt: mockDate,
+          errorReport,
+        });
+
+        const response = await request(server)
+          .get(`/tasks/status/${mockObjectId.toString()}`)
+          .set('x-api-key', validApiKey)
+          .expect(200);
+
+        const body = response.body as StatusResponse;
+
+        expect(body.status).toBe(TaskStatus.FAILED);
+        expect(body.errorReport).toHaveLength(1);
+        expect(body.errorReport[0].row).toBe(2);
+        expect(body.errorReport[0].reason).toBe('Invalid date format');
+      });
+
+      it('should reject status request without API key', async () => {
+        const response = await request(server)
+          .get(`/tasks/status/${mockObjectId.toString()}`)
+          .expect(401);
+
+        const body = response.body as ErrorResponse;
+
+        expect(body.message).toBe('Missing x-api-key header');
+      });
     });
   });
 });
