@@ -9,21 +9,20 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
+import { TasksService } from './tasks.service';
 
 @Controller('tasks')
 export class TasksController {
   private readonly logger = new Logger(TasksController.name);
 
+  constructor(private readonly tasksService: TasksService) {}
+
   /**
    * POST /tasks/upload
    *
    * Accepts XLSX file via multipart/form-data and saves it to disk.
-   *
-   * How Multer streaming works:
-   * 1. Multer uses Busboy internally to parse multipart/form-data
-   * 2. With diskStorage, Multer streams directly to disk (no memory buffering)
-   * 3. The file is written chunk by chunk as it arrives
-   * 4. We get file metadata after upload completes
+   * Creates a task entry in MongoDB with status PENDING.
+   * Returns the generated taskId for tracking.
    *
    * Usage:
    *   curl -X POST http://localhost:3000/tasks/upload -F "file=@myfile.xlsx"
@@ -55,18 +54,19 @@ export class TasksController {
       },
     }),
   )
-  uploadFile(@UploadedFile() file: Express.Multer.File) {
+  async uploadFile(@UploadedFile() file: Express.Multer.File) {
     if (!file) {
       throw new BadRequestException('No file provided');
     }
 
     this.logger.log(`File saved: ${file.filename} (${file.size} bytes)`);
 
+    // Create task in database
+    const task = await this.tasksService.createTask(file.path);
+
     return {
       message: 'File uploaded successfully',
-      filename: file.filename,
-      originalName: file.originalname,
-      size: file.size,
+      taskId: task._id.toString(),
     };
   }
 }

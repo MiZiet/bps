@@ -9,10 +9,12 @@ A NestJS service for processing reservation files (XLSX).
 - ✅ File size limit (10MB)
 - ✅ Optional API key authentication
 - ✅ Docker & Docker Compose support
+- ✅ MongoDB task storage (taskId, filePath, status, timestamps)
 
 ## Tech Stack
 
 - **NestJS** - Node.js framework
+- **MongoDB/Mongoose** - Database for task storage
 - **Multer** - File upload handling (with streaming via `diskStorage`)
 - **TypeScript** - Type safety
 
@@ -37,19 +39,22 @@ This project uses some simplified solutions for development purposes:
 
 ```
 src/
-├── app.module.ts              # Main application module
+├── app.module.ts                  # Main application module
 ├── common/
 │   └── guards/
-│       └── api-key.guard.ts   # API key authentication guard
+│       └── api-key.guard.ts       # API key authentication guard
 └── tasks/
-    ├── tasks.module.ts        # Tasks module
-    └── tasks.controller.ts    # File upload endpoint
-uploads/                       # Uploaded files are stored here
+    ├── schemas/
+    │   └── task.schema.ts         # MongoDB Task schema
+    ├── tasks.module.ts            # Tasks module
+    ├── tasks.controller.ts        # File upload endpoint
+    └── tasks.service.ts           # Task business logic
+uploads/                           # Uploaded files are stored here
 scripts/
-└── generate-sample.js         # Script to generate sample XLSX file
-Dockerfile                     # Docker image definition
-docker-compose.yml             # Full stack (app + MongoDB)
-docker-compose.dev.yml         # Development (MongoDB only)
+└── generate-sample.js             # Script to generate sample XLSX file
+Dockerfile                         # Docker image definition
+docker-compose.yml                 # Full stack (app + MongoDB)
+docker-compose.dev.yml             # Development (MongoDB only)
 ```
 
 ## Installation
@@ -118,9 +123,7 @@ x-api-key: your-secret-api-key  # Required if API_KEY is set
 ```json
 {
   "message": "File uploaded successfully",
-  "filename": "1736171234567.xlsx",
-  "originalName": "reservations.xlsx",
-  "size": 1024
+  "taskId": "507f1f77bcf86cd799439011"
 }
 ```
 
@@ -172,3 +175,14 @@ This creates `sample-reservations.xlsx` with example reservation data:
 | 12345 | Jan Nowak | oczekująca | 2024-05-01 | 2024-05-07 |
 | 12346 | Anna Kowal | anulowana | 2024-06-10 | 2024-06-15 |
 | ... | ... | ... | ... | ... |
+
+## TODO (Remaining Features)
+
+- [ ] `GET /tasks/status/:taskId` - Check task status endpoint
+- [ ] `GET /tasks/report/:taskId` - Download error report endpoint
+- [ ] BullMQ queue for async file processing
+- [ ] XLSX file parsing and validation
+- [ ] Reservation storage in MongoDB
+- [ ] Error report generation
+- [ ] WebSocket for real-time status updates (optional)
+

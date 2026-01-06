@@ -6,14 +6,15 @@ import request from 'supertest';
 import type { Server } from 'http';
 import { join } from 'path';
 import { existsSync, unlinkSync, writeFileSync } from 'fs';
-import { TasksModule } from '../src/tasks/tasks.module';
+import { Types } from 'mongoose';
+import { TasksController } from '../src/tasks/tasks.controller';
+import { TasksService } from '../src/tasks/tasks.service';
 import { ApiKeyGuard } from '../src/common/guards/api-key.guard';
+import { TaskStatus } from '../src/tasks/schemas/task.schema';
 
 interface UploadResponse {
   message: string;
-  filename: string;
-  originalName: string;
-  size: number;
+  taskId: string;
 }
 
 interface ErrorResponse {
@@ -23,7 +24,17 @@ interface ErrorResponse {
 
 describe('TasksController (e2e)', () => {
   const testFilePath = join(__dirname, 'test-file.xlsx');
-  const uploadsDir = './uploads';
+  const mockObjectId = new Types.ObjectId();
+
+  // Mock TasksService to avoid MongoDB dependency in tests
+  const mockTasksService = {
+    createTask: jest.fn().mockImplementation((filePath: string) => ({
+      _id: mockObjectId,
+      filePath,
+      status: TaskStatus.PENDING,
+      createdAt: new Date(),
+    })),
+  };
 
   beforeAll(() => {
     // Create a fake xlsx file for testing (just needs .xlsx extension)
@@ -46,12 +57,15 @@ describe('TasksController (e2e)', () => {
         imports: [
           ConfigModule.forRoot({
             isGlobal: true,
-            // No API_KEY set = auth disabled
             load: [() => ({ API_KEY: undefined })],
           }),
-          TasksModule,
         ],
+        controllers: [TasksController],
         providers: [
+          {
+            provide: TasksService,
+            useValue: mockTasksService,
+          },
           {
             provide: APP_GUARD,
             useClass: ApiKeyGuard,
@@ -68,7 +82,11 @@ describe('TasksController (e2e)', () => {
       await app.close();
     });
 
-    it('should upload xlsx file successfully without API key', async () => {
+    afterEach(() => {
+      jest.clearAllMocks();
+    });
+
+    it('should upload xlsx file and return taskId', async () => {
       const response = await request(server)
         .post('/tasks/upload')
         .attach('file', testFilePath)
@@ -76,18 +94,9 @@ describe('TasksController (e2e)', () => {
 
       const body = response.body as UploadResponse;
 
-      expect(body).toMatchObject({
-        message: 'File uploaded successfully',
-        originalName: 'test-file.xlsx',
-      });
-      expect(body.filename).toBeDefined();
-      expect(body.size).toBeGreaterThan(0);
-
-      // Clean up uploaded file
-      const uploadedPath = join(uploadsDir, body.filename);
-      if (existsSync(uploadedPath)) {
-        unlinkSync(uploadedPath);
-      }
+      expect(body.message).toBe('File uploaded successfully');
+      expect(body.taskId).toBe(mockObjectId.toString());
+      expect(mockTasksService.createTask).toHaveBeenCalled();
     });
 
     it('should reject non-xlsx files', async () => {
@@ -127,9 +136,13 @@ describe('TasksController (e2e)', () => {
             isGlobal: true,
             load: [() => ({ API_KEY: validApiKey })],
           }),
-          TasksModule,
         ],
+        controllers: [TasksController],
         providers: [
+          {
+            provide: TasksService,
+            useValue: mockTasksService,
+          },
           {
             provide: APP_GUARD,
             useClass: ApiKeyGuard,
@@ -146,7 +159,11 @@ describe('TasksController (e2e)', () => {
       await app.close();
     });
 
-    it('should upload file with valid API key', async () => {
+    afterEach(() => {
+      jest.clearAllMocks();
+    });
+
+    it('should upload file with valid API key and return taskId', async () => {
       const response = await request(server)
         .post('/tasks/upload')
         .set('x-api-key', validApiKey)
@@ -156,19 +173,11 @@ describe('TasksController (e2e)', () => {
       const body = response.body as UploadResponse;
 
       expect(body.message).toBe('File uploaded successfully');
-
-      // Clean up uploaded file
-      const uploadedPath = join(uploadsDir, body.filename);
-      if (existsSync(uploadedPath)) {
-        unlinkSync(uploadedPath);
-      }
+      expect(body.taskId).toBe(mockObjectId.toString());
     });
 
     it('should reject request without API key header', async () => {
-      const response = await request(server)
-        .post('/tasks/upload')
-        .attach('file', testFilePath)
-        .expect(401);
+      const response = await request(server).post('/tasks/upload').expect(401);
 
       const body = response.body as ErrorResponse;
 
@@ -179,7 +188,6 @@ describe('TasksController (e2e)', () => {
       const response = await request(server)
         .post('/tasks/upload')
         .set('x-api-key', 'wrong-key')
-        .attach('file', testFilePath)
         .expect(401);
 
       const body = response.body as ErrorResponse;
