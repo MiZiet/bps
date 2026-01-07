@@ -8,8 +8,11 @@ services:
     environment:
       - API_KEY=${API_KEY:-}
       - MONGODB_URI=mongodb://mongo:27017/booking-service
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
     depends_on:
       - mongo
+      - redis
     volumes:
       - ./uploads:/app/uploads
     restart: unless-stopped
@@ -22,6 +25,15 @@ services:
       - mongo_data:/data/db
     restart: unless-stopped
 
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
 volumes:
   mongo_data:
+  redis_data:
 

@@ -1,13 +1,20 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
+import { InjectQueue } from '@nestjs/bullmq';
 import { Model } from 'mongoose';
+import { Queue } from 'bullmq';
 import { Task, TaskDocument, TaskStatus } from './schemas/task.schema';
+import { TASKS_QUEUE } from './tasks.constants';
+import { TaskJobData } from './tasks.processor';
 
 @Injectable()
 export class TasksService {
   private readonly logger = new Logger(TasksService.name);
 
-  constructor(@InjectModel(Task.name) private taskModel: Model<TaskDocument>) {}
+  constructor(
+    @InjectModel(Task.name) private taskModel: Model<TaskDocument>,
+    @InjectQueue(TASKS_QUEUE) private tasksQueue: Queue<TaskJobData>,
+  ) {}
 
   /**
    * Create a new task for the uploaded file.
@@ -22,6 +29,9 @@ export class TasksService {
     const savedTask = await task.save();
     const taskId = savedTask._id.toString();
     this.logger.log(`Task ${taskId} created with status ${savedTask.status}`);
+
+    await this.tasksQueue.add('process-file', { taskId });
+    this.logger.log(`Task ${taskId} added to queue`);
 
     return savedTask;
   }

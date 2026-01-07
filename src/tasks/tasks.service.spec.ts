@@ -1,8 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getModelToken } from '@nestjs/mongoose';
+import { getQueueToken } from '@nestjs/bullmq';
 import { Types } from 'mongoose';
 import { TasksService } from './tasks.service';
 import { Task, TaskStatus } from './schemas/task.schema';
+import { TASKS_QUEUE } from './tasks.constants';
 
 describe('TasksService', () => {
   let service: TasksService;
@@ -25,6 +27,10 @@ describe('TasksService', () => {
     findByIdAndUpdate: jest.fn(),
   };
 
+  const mockQueue = {
+    add: jest.fn().mockResolvedValue({ id: 'job-1' }),
+  };
+
   // Mock constructor function
   const MockTaskModel = jest.fn().mockImplementation(() => mockTask);
   Object.assign(MockTaskModel, mockTaskModel);
@@ -36,6 +42,10 @@ describe('TasksService', () => {
         {
           provide: getModelToken(Task.name),
           useValue: MockTaskModel,
+        },
+        {
+          provide: getQueueToken(TASKS_QUEUE),
+          useValue: mockQueue,
         },
       ],
     }).compile();
@@ -52,7 +62,7 @@ describe('TasksService', () => {
   });
 
   describe('createTask', () => {
-    it('should create a task with PENDING status', async () => {
+    it('should create a task with PENDING status and add to queue', async () => {
       const filePath = './uploads/test.xlsx';
 
       const result = await service.createTask(filePath);
@@ -61,6 +71,9 @@ describe('TasksService', () => {
       expect(result.status).toBe(TaskStatus.PENDING);
       expect(result._id).toBeDefined();
       expect(mockTask.save).toHaveBeenCalled();
+      expect(mockQueue.add).toHaveBeenCalledWith('process-file', {
+        taskId: mockObjectId.toString(),
+      });
     });
   });
 

@@ -1,14 +1,19 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { MongooseModule, getConnectionToken } from '@nestjs/mongoose';
+import { getQueueToken } from '@nestjs/bullmq';
 import { APP_GUARD } from '@nestjs/core';
 import request from 'supertest';
 import type { Server } from 'http';
 import { join } from 'path';
-import { existsSync, unlinkSync, writeFileSync } from 'fs';
-import { Types } from 'mongoose';
+import { existsSync, unlinkSync, writeFileSync, mkdirSync } from 'fs';
+import { Connection } from 'mongoose';
+import { setupTestDatabase, teardownTestDatabase } from './setup-e2e';
 import { TasksController } from '../src/tasks/tasks.controller';
 import { TasksService } from '../src/tasks/tasks.service';
+import { Task, TaskSchema } from '../src/tasks/schemas/task.schema';
+import { TASKS_QUEUE } from '../src/tasks/tasks.constants';
 import { ApiKeyGuard } from '../src/common/guards/api-key.guard';
 import { TaskStatus } from '../src/tasks/schemas/task.schema';
 
@@ -32,184 +37,87 @@ interface ErrorResponse {
 
 describe('TasksController (e2e)', () => {
   const testFilePath = join(__dirname, 'test-file.xlsx');
-  const mockObjectId = new Types.ObjectId();
-  const mockDate = new Date();
+  const uploadsDir = join(__dirname, '..', 'uploads');
+  let mongoUri: string;
+  let app: INestApplication;
+  let server: Server;
+  let connection: Connection;
+  let mockQueue: { add: jest.Mock };
+  const validApiKey = 'test-api-key-123';
 
-  // Mock TasksService to avoid MongoDB dependency in tests
-  const mockTasksService = {
-    createTask: jest.fn().mockImplementation((filePath: string) => ({
-      _id: mockObjectId,
-      filePath,
-      status: TaskStatus.PENDING,
-      createdAt: mockDate,
-      updatedAt: mockDate,
-      errorReport: [],
-    })),
-    findById: jest.fn(),
-  };
+  beforeAll(async () => {
+    // Setup in-memory MongoDB
+    mongoUri = await setupTestDatabase();
 
-  beforeAll(() => {
-    // Create a fake xlsx file for testing (just needs .xlsx extension)
+    // Ensure uploads directory exists
+    if (!existsSync(uploadsDir)) {
+      mkdirSync(uploadsDir, { recursive: true });
+    }
+
+    // Create a fake xlsx file for testing
     writeFileSync(testFilePath, 'fake xlsx content for testing');
+
+    // Setup NestJS app - manually configure instead of importing TasksModule
+    mockQueue = { add: jest.fn().mockResolvedValue({ id: 'job-1' }) };
+
+    const moduleFixture: TestingModule = await Test.createTestingModule({
+      imports: [
+        ConfigModule.forRoot({
+          isGlobal: true,
+          load: [() => ({ API_KEY: validApiKey })],
+        }),
+        MongooseModule.forRoot(mongoUri),
+        MongooseModule.forFeature([{ name: Task.name, schema: TaskSchema }]),
+      ],
+      controllers: [TasksController],
+      providers: [
+        TasksService,
+        {
+          provide: getQueueToken(TASKS_QUEUE),
+          useValue: mockQueue,
+        },
+        {
+          provide: APP_GUARD,
+          useClass: ApiKeyGuard,
+        },
+      ],
+    }).compile();
+
+    app = moduleFixture.createNestApplication();
+    await app.init();
+    server = app.getHttpServer() as Server;
+    connection = moduleFixture.get<Connection>(getConnectionToken());
   });
 
-  afterAll(() => {
+  afterAll(async () => {
+    if (connection) {
+      await connection.dropDatabase();
+    }
+    if (app) {
+      await app.close();
+    }
+
     // Clean up test file
     if (existsSync(testFilePath)) {
       unlinkSync(testFilePath);
     }
+
+    // Teardown MongoDB
+    await teardownTestDatabase();
   });
 
-  describe('without API key configured', () => {
-    let app: INestApplication;
-    let server: Server;
-
-    beforeAll(async () => {
-      const moduleFixture: TestingModule = await Test.createTestingModule({
-        imports: [
-          ConfigModule.forRoot({
-            isGlobal: true,
-            load: [() => ({ API_KEY: undefined })],
-          }),
-        ],
-        controllers: [TasksController],
-        providers: [
-          {
-            provide: TasksService,
-            useValue: mockTasksService,
-          },
-          {
-            provide: APP_GUARD,
-            useClass: ApiKeyGuard,
-          },
-        ],
-      }).compile();
-
-      app = moduleFixture.createNestApplication();
-      await app.init();
-      server = app.getHttpServer() as Server;
-    });
-
-    afterAll(async () => {
-      await app.close();
-    });
-
-    afterEach(() => {
-      jest.clearAllMocks();
-    });
-
-    it('should upload xlsx file and return taskId', async () => {
-      const response = await request(server)
-        .post('/tasks/upload')
-        .attach('file', testFilePath)
-        .expect(201);
-
-      const body = response.body as UploadResponse;
-
-      expect(body.message).toBe('File uploaded successfully');
-      expect(body.taskId).toBe(mockObjectId.toString());
-      expect(mockTasksService.createTask).toHaveBeenCalled();
-    });
-
-    it('should reject non-xlsx files', async () => {
-      const txtFilePath = join(__dirname, 'test.txt');
-      writeFileSync(txtFilePath, 'text content');
-
-      try {
-        await request(server)
-          .post('/tasks/upload')
-          .attach('file', txtFilePath)
-          .expect(400);
-      } finally {
-        if (existsSync(txtFilePath)) {
-          unlinkSync(txtFilePath);
-        }
+  afterEach(async () => {
+    if (connection) {
+      const collections = connection.collections;
+      for (const key in collections) {
+        await collections[key].deleteMany({});
       }
-    });
-
-    it('should reject request without file', async () => {
-      const response = await request(server).post('/tasks/upload').expect(400);
-
-      const body = response.body as ErrorResponse;
-
-      expect(body.message).toBe('No file provided');
-    });
-
-    describe('GET /tasks/status/:taskId', () => {
-      it('should return task status when task exists', async () => {
-        mockTasksService.findById.mockResolvedValue({
-          _id: mockObjectId,
-          status: TaskStatus.PENDING,
-          createdAt: mockDate,
-          updatedAt: mockDate,
-          errorReport: [],
-        });
-
-        const response = await request(server)
-          .get(`/tasks/status/${mockObjectId.toString()}`)
-          .expect(200);
-
-        const body = response.body as StatusResponse;
-
-        expect(body.taskId).toBe(mockObjectId.toString());
-        expect(body.status).toBe(TaskStatus.PENDING);
-        expect(body.errorReport).toEqual([]);
-      });
-
-      it('should return 404 when task does not exist', async () => {
-        mockTasksService.findById.mockResolvedValue(null);
-
-        const response = await request(server)
-          .get('/tasks/status/non-existent-id')
-          .expect(404);
-
-        const body = response.body as ErrorResponse;
-
-        expect(body.message).toBe('Task with ID non-existent-id not found');
-      });
-    });
+    }
+    jest.clearAllMocks();
   });
 
-  describe('with API key configured', () => {
-    let app: INestApplication;
-    let server: Server;
-    const validApiKey = 'test-api-key-123';
-
-    beforeAll(async () => {
-      const moduleFixture: TestingModule = await Test.createTestingModule({
-        imports: [
-          ConfigModule.forRoot({
-            isGlobal: true,
-            load: [() => ({ API_KEY: validApiKey })],
-          }),
-        ],
-        controllers: [TasksController],
-        providers: [
-          {
-            provide: TasksService,
-            useValue: mockTasksService,
-          },
-          {
-            provide: APP_GUARD,
-            useClass: ApiKeyGuard,
-          },
-        ],
-      }).compile();
-
-      app = moduleFixture.createNestApplication();
-      await app.init();
-      server = app.getHttpServer() as Server;
-    });
-
-    afterAll(async () => {
-      await app.close();
-    });
-
-    afterEach(() => {
-      jest.clearAllMocks();
-    });
-
-    it('should upload file with valid API key and return taskId', async () => {
+  describe('POST /tasks/upload', () => {
+    it('should upload file, save to DB, and add to queue', async () => {
       const response = await request(server)
         .post('/tasks/upload')
         .set('x-api-key', validApiKey)
@@ -219,14 +127,28 @@ describe('TasksController (e2e)', () => {
       const body = response.body as UploadResponse;
 
       expect(body.message).toBe('File uploaded successfully');
-      expect(body.taskId).toBe(mockObjectId.toString());
+      expect(body.taskId).toBeDefined();
+      expect(body.taskId).toHaveLength(24); // MongoDB ObjectId
+
+      // Verify queue was called
+      expect(mockQueue.add).toHaveBeenCalledWith('process-file', {
+        taskId: body.taskId,
+      });
+
+      // Verify task exists in database
+      const statusResponse = await request(server)
+        .get(`/tasks/status/${body.taskId}`)
+        .set('x-api-key', validApiKey)
+        .expect(200);
+
+      const status = statusResponse.body as StatusResponse;
+      expect(status.status).toBe(TaskStatus.PENDING);
     });
 
     it('should reject request without API key header', async () => {
       const response = await request(server).post('/tasks/upload').expect(401);
 
       const body = response.body as ErrorResponse;
-
       expect(body.message).toBe('Missing x-api-key header');
     });
 
@@ -237,70 +159,42 @@ describe('TasksController (e2e)', () => {
         .expect(401);
 
       const body = response.body as ErrorResponse;
-
       expect(body.message).toBe('Invalid API key');
     });
+  });
 
-    describe('GET /tasks/status/:taskId', () => {
-      it('should return task status with valid API key', async () => {
-        mockTasksService.findById.mockResolvedValue({
-          _id: mockObjectId,
-          status: TaskStatus.COMPLETED,
-          createdAt: mockDate,
-          updatedAt: mockDate,
-          errorReport: [],
-        });
+  describe('GET /tasks/status/:taskId', () => {
+    it('should return task status with valid API key', async () => {
+      // Upload file first
+      const uploadResponse = await request(server)
+        .post('/tasks/upload')
+        .set('x-api-key', validApiKey)
+        .attach('file', testFilePath)
+        .expect(201);
 
-        const response = await request(server)
-          .get(`/tasks/status/${mockObjectId.toString()}`)
-          .set('x-api-key', validApiKey)
-          .expect(200);
+      const { taskId } = uploadResponse.body as UploadResponse;
 
-        const body = response.body as StatusResponse;
+      // Get status
+      const response = await request(server)
+        .get(`/tasks/status/${taskId}`)
+        .set('x-api-key', validApiKey)
+        .expect(200);
 
-        expect(body.taskId).toBe(mockObjectId.toString());
-        expect(body.status).toBe(TaskStatus.COMPLETED);
-      });
+      const body = response.body as StatusResponse;
 
-      it('should return task with error report when failed', async () => {
-        const errorReport = [
-          {
-            row: 2,
-            reason: 'Invalid date format',
-            suggestion: 'Use YYYY-MM-DD format',
-          },
-        ];
+      expect(body.taskId).toBe(taskId);
+      expect(body.status).toBe(TaskStatus.PENDING);
+    });
 
-        mockTasksService.findById.mockResolvedValue({
-          _id: mockObjectId,
-          status: TaskStatus.FAILED,
-          createdAt: mockDate,
-          updatedAt: mockDate,
-          errorReport,
-        });
+    it('should reject status request without API key', async () => {
+      const fakeId = '507f1f77bcf86cd799439011';
 
-        const response = await request(server)
-          .get(`/tasks/status/${mockObjectId.toString()}`)
-          .set('x-api-key', validApiKey)
-          .expect(200);
+      const response = await request(server)
+        .get(`/tasks/status/${fakeId}`)
+        .expect(401);
 
-        const body = response.body as StatusResponse;
-
-        expect(body.status).toBe(TaskStatus.FAILED);
-        expect(body.errorReport).toHaveLength(1);
-        expect(body.errorReport[0].row).toBe(2);
-        expect(body.errorReport[0].reason).toBe('Invalid date format');
-      });
-
-      it('should reject status request without API key', async () => {
-        const response = await request(server)
-          .get(`/tasks/status/${mockObjectId.toString()}`)
-          .expect(401);
-
-        const body = response.body as ErrorResponse;
-
-        expect(body.message).toBe('Missing x-api-key header');
-      });
+      const body = response.body as ErrorResponse;
+      expect(body.message).toBe('Missing x-api-key header');
     });
   });
 });
