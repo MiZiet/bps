@@ -30,6 +30,11 @@ interface StatusResponse {
   errorReport: Array<{ row: number; reason: string; suggestion: string }>;
 }
 
+interface ReportResponse {
+  taskId: string;
+  errorReport: Array<{ row: number; reason: string; suggestion: string }>;
+}
+
 interface ErrorResponse {
   message: string;
   statusCode: number;
@@ -164,7 +169,7 @@ describe('TasksController (e2e)', () => {
   });
 
   describe('GET /tasks/status/:taskId', () => {
-    it('should return task status with valid API key', async () => {
+    it('should return task status', async () => {
       // Upload file first
       const uploadResponse = await request(server)
         .post('/tasks/upload')
@@ -184,6 +189,46 @@ describe('TasksController (e2e)', () => {
 
       expect(body.taskId).toBe(taskId);
       expect(body.status).toBe(TaskStatus.PENDING);
+    });
+
+    it('should reject status request without API key', async () => {
+      const fakeId = '507f1f77bcf86cd799439011';
+
+      const response = await request(server)
+        .get(`/tasks/status/${fakeId}`)
+        .expect(401);
+
+      const body = response.body as ErrorResponse;
+      expect(body.message).toBe('Missing x-api-key header');
+    });
+  });
+
+  describe('GET /tasks/report/:taskId', () => {
+    it('should return task report', async () => {
+      const taskId = (
+        await connection.collections['tasks'].insertOne({
+          filePath: '/path/to/file.xlsx',
+          status: TaskStatus.FAILED,
+          errorReport: [
+            { row: 2, reason: 'Invalid date', suggestion: 'Use YYYY-MM-DD' },
+          ],
+        })
+      ).insertedId;
+
+      const response = await request(server)
+        .get(`/tasks/report/${taskId.toString()}`)
+        .set('x-api-key', validApiKey)
+        .expect(200);
+
+      const body = response.body as ReportResponse;
+      expect(body.taskId).toBe(taskId.toString());
+      expect(body.errorReport).toEqual([
+        {
+          reason: 'Invalid date',
+          row: 2,
+          suggestion: 'Use YYYY-MM-DD',
+        },
+      ]);
     });
 
     it('should reject status request without API key', async () => {

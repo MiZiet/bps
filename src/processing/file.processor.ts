@@ -101,7 +101,7 @@ export class FileProcessor extends WorkerHost {
       this.logger.log(`Read ${processedRows} rows from file`);
 
       const finalStatus =
-        errorReport.length > 0 ? TaskStatus.COMPLETED : TaskStatus.FAILED;
+        errorReport.length > 0 ? TaskStatus.FAILED : TaskStatus.COMPLETED;
 
       await this.tasksService.completeTask(taskId, finalStatus, errorReport);
 

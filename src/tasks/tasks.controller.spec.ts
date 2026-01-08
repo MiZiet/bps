@@ -156,4 +156,6 @@ describe('TasksController', () => {
       );
     });
   });
+
+  describe('getTaskReport', () => {});
 });

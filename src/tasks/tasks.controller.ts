@@ -99,4 +99,28 @@ export class TasksController {
       errorReport: task.errorReport,
     };
   }
+
+  /**
+   * GET /tasks/report/:taskId
+   *
+   * Returns the errors report of a task.
+   *
+   * Usage:
+   *   curl http://localhost:3000/tasks/report/507f1f77bcf86cd799439011
+   */
+  @Get('report/:taskId')
+  async getTaskReport(@Param('taskId') taskId: string) {
+    this.logger.log(`Getting report for task ${taskId}`);
+
+    const task = await this.tasksService.findById(taskId);
+
+    if (!task) {
+      throw new NotFoundException(`Task with ID ${taskId} not found`);
+    }
+
+    return {
+      taskId: task._id.toString(),
+      errorReport: task.errorReport,
+    };
+  }
 }
