@@ -4,7 +4,7 @@ import { getQueueToken } from '@nestjs/bullmq';
 import { Types } from 'mongoose';
 import { TasksService } from './tasks.service';
 import { Task, TaskStatus } from './schemas/task.schema';
-import { TASKS_QUEUE } from './tasks.constants';
+import { TASKS_QUEUE } from '../common/constants';
 
 describe('TasksService', () => {
   let service: TasksService;

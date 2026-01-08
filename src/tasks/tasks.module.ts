@@ -3,9 +3,8 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { BullModule } from '@nestjs/bullmq';
 import { TasksController } from './tasks.controller';
 import { TasksService } from './tasks.service';
-import { TasksProcessor } from './tasks.processor';
 import { Task, TaskSchema } from './schemas/task.schema';
-import { TASKS_QUEUE } from './tasks.constants';
+import { TASKS_QUEUE } from '../common/constants';
 
 @Module({
   imports: [
@@ -15,7 +14,7 @@ import { TASKS_QUEUE } from './tasks.constants';
     }),
   ],
   controllers: [TasksController],
-  providers: [TasksService, TasksProcessor],
+  providers: [TasksService],
   exports: [TasksService],
 })
 export class TasksModule {}

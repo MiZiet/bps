@@ -13,9 +13,9 @@ import { setupTestDatabase, teardownTestDatabase } from './setup-e2e';
 import { TasksController } from '../src/tasks/tasks.controller';
 import { TasksService } from '../src/tasks/tasks.service';
 import { Task, TaskSchema } from '../src/tasks/schemas/task.schema';
-import { TASKS_QUEUE } from '../src/tasks/tasks.constants';
 import { ApiKeyGuard } from '../src/common/guards/api-key.guard';
 import { TaskStatus } from '../src/tasks/schemas/task.schema';
+import { TASKS_QUEUE } from '../src/common/constants';
 
 interface UploadResponse {
   message: string;

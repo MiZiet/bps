@@ -3,9 +3,14 @@ import { InjectModel } from '@nestjs/mongoose';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Model } from 'mongoose';
 import { Queue } from 'bullmq';
-import { Task, TaskDocument, TaskStatus } from './schemas/task.schema';
-import { TASKS_QUEUE } from './tasks.constants';
-import { TaskJobData } from './tasks.processor';
+import {
+  Task,
+  TaskDocument,
+  TaskStatus,
+  ErrorReportItem,
+} from './schemas/task.schema';
+import { TASKS_QUEUE } from '../common/constants';
+import { TaskJobData } from '../processing/file.processor';
 
 @Injectable()
 export class TasksService {
@@ -54,6 +59,23 @@ export class TasksService {
 
     return this.taskModel
       .findByIdAndUpdate(taskId, { status }, { new: true })
+      .exec();
+  }
+
+  /**
+   * Complete task with status and error report
+   */
+  async completeTask(
+    taskId: string,
+    status: TaskStatus.COMPLETED | TaskStatus.FAILED,
+    errorReport: ErrorReportItem[],
+  ): Promise<TaskDocument | null> {
+    this.logger.log(
+      `Completing task ${taskId} with status ${status}, ${errorReport.length} errors`,
+    );
+
+    return this.taskModel
+      .findByIdAndUpdate(taskId, { status, errorReport }, { new: true })
       .exec();
   }
 }

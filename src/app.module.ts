@@ -4,6 +4,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { BullModule } from '@nestjs/bullmq';
 import { APP_GUARD } from '@nestjs/core';
 import { TasksModule } from './tasks/tasks.module';
+import { ProcessingModule } from './processing/processing.module';
 import { ApiKeyGuard } from './common/guards/api-key.guard';
 
 @Module({
@@ -32,6 +33,7 @@ import { ApiKeyGuard } from './common/guards/api-key.guard';
       inject: [ConfigService],
     }),
     TasksModule,
+    ProcessingModule,
   ],
   providers: [
     {
