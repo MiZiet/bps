@@ -69,6 +69,13 @@ export class ReportsService {
           suggestion: 'Ensure check-out date is after check-in date',
         };
 
+      case ReportErrorCode.DUPLICATE:
+        return {
+          row: error.row,
+          reason: `Duplicate reservation ID: ${error.field}`,
+          suggestion: 'Remove duplicate entry or use unique reservation ID',
+        };
+
       default:
         return {
           row: error.row,

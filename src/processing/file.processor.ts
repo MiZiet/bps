@@ -53,6 +53,7 @@ export class FileProcessor extends WorkerHost {
     await this.tasksService.updateStatus(taskId, TaskStatus.IN_PROGRESS);
 
     const rawErrors: RawReportError[] = [];
+    const seenReservationIds = new Set<string>();
     let processedRows = 0;
 
     try {
@@ -75,6 +76,20 @@ export class FileProcessor extends WorkerHost {
 
           try {
             const dto = this.mapRowToDto(row);
+
+            // Check for duplicates within the file
+            if (
+              dto.reservationId &&
+              seenReservationIds.has(dto.reservationId)
+            ) {
+              rawErrors.push({
+                row: row.number,
+                code: ReportErrorCode.DUPLICATE,
+                field: dto.reservationId,
+              });
+              continue;
+            }
+
             const validationErrors = await validate(dto);
 
             if (validationErrors.length > 0) {
@@ -83,6 +98,9 @@ export class FileProcessor extends WorkerHost {
               );
               continue;
             }
+
+            // Track seen reservation IDs after validation passes
+            seenReservationIds.add(dto.reservationId);
 
             // Process valid reservation
             await this.reservationsService.processReservation(dto);
@@ -228,6 +246,9 @@ export class FileProcessor extends WorkerHost {
     }
     if (constraints.includes('isNotEmpty')) {
       return ReportErrorCode.MISSING_FIELD;
+    }
+    if (constraints.includes('isCheckOutAfterCheckIn')) {
+      return ReportErrorCode.CHECKOUT_BEFORE_CHECKIN;
     }
 
     return ReportErrorCode.UNKNOWN;

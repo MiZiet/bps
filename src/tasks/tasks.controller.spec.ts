@@ -122,5 +122,51 @@ describe('TasksController', () => {
     });
   });
 
-  describe('getTaskReport', () => {});
+  describe('getTaskReport', () => {
+    const mockResponse = {
+      json: jest.fn().mockReturnThis(),
+      download: jest.fn().mockReturnThis(),
+    };
+
+    it('should download report when reportPath exists', async () => {
+      mockTasksService.findById.mockResolvedValue(mockTask);
+
+      await controller.getTaskReport(
+        mockObjectId.toString(),
+        mockResponse as unknown as import('express').Response,
+      );
+
+      expect(mockResponse.download).toHaveBeenCalledWith(mockReportPath);
+    });
+
+    it('should return empty errors when no reportPath', async () => {
+      const taskWithoutReport = {
+        ...mockTask,
+        reportPath: '',
+      };
+      mockTasksService.findById.mockResolvedValue(taskWithoutReport);
+
+      await controller.getTaskReport(
+        mockObjectId.toString(),
+        mockResponse as unknown as import('express').Response,
+      );
+
+      expect(mockResponse.json).toHaveBeenCalledWith({
+        message: 'No errors found during processing',
+        errors: [],
+      });
+      expect(mockResponse.download).not.toHaveBeenCalled();
+    });
+
+    it('should throw NotFoundException when task does not exist', async () => {
+      mockTasksService.findById.mockResolvedValue(null);
+
+      await expect(
+        controller.getTaskReport(
+          'non-existent-id',
+          mockResponse as unknown as import('express').Response,
+        ),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
 });

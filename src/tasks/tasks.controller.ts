@@ -120,6 +120,13 @@ export class TasksController {
       throw new NotFoundException(`Task with ID ${taskId} not found`);
     }
 
+    if (!task.reportPath) {
+      return res.json({
+        message: 'No errors found during processing',
+        errors: [],
+      });
+    }
+
     return res.download(task.reportPath);
   }
 }

@@ -32,8 +32,8 @@ interface StatusResponse {
 }
 
 interface ReportResponse {
-  taskId: string;
-  reportPath: string;
+  message?: string;
+  errors: Array<{ row: number; reason: string; suggestion: string }>;
 }
 
 interface ErrorResponse {
@@ -168,6 +168,26 @@ describe('TasksController (e2e)', () => {
       const body = response.body as ErrorResponse;
       expect(body.message).toBe('Invalid API key');
     });
+
+    it('should reject non-xlsx files', async () => {
+      const txtFilePath = join(__dirname, 'test-file.txt');
+      writeFileSync(txtFilePath, 'not an xlsx file');
+
+      try {
+        const response = await request(server)
+          .post('/tasks/upload')
+          .set('x-api-key', validApiKey)
+          .attach('file', txtFilePath)
+          .expect(400);
+
+        const body = response.body as ErrorResponse;
+        expect(body.message).toBe('Only .xlsx files are allowed');
+      } finally {
+        if (existsSync(txtFilePath)) {
+          unlinkSync(txtFilePath);
+        }
+      }
+    });
   });
 
   describe('GET /tasks/status/:taskId', () => {
@@ -201,15 +221,73 @@ describe('TasksController (e2e)', () => {
       const body = response.body as ErrorResponse;
       expect(body.message).toBe('Missing x-api-key header');
     });
+
+    it('should return 404 for non-existent task', async () => {
+      const fakeId = '507f1f77bcf86cd799439011';
+
+      const response = await request(server)
+        .get(`/tasks/status/${fakeId}`)
+        .set('x-api-key', validApiKey)
+        .expect(404);
+
+      const body = response.body as ErrorResponse;
+      expect(body.message).toBe(`Task with ID ${fakeId} not found`);
+    });
   });
 
   describe('GET /tasks/report/:taskId', () => {
-    it('should return task report', async () => {
+    const reportsDir = join(__dirname, '..', 'reports');
+    let testReportPath: string;
+
+    beforeAll(() => {
+      if (!existsSync(reportsDir)) {
+        mkdirSync(reportsDir, { recursive: true });
+      }
+    });
+
+    afterEach(() => {
+      if (testReportPath && existsSync(testReportPath)) {
+        unlinkSync(testReportPath);
+      }
+    });
+
+    it('should download task report when errors exist', async () => {
+      const reportContent = [
+        {
+          row: 2,
+          reason: 'Missing required field: guestName',
+          suggestion: 'Provide value for field "guestName"',
+        },
+      ];
+      testReportPath = join(reportsDir, 'test-report.json');
+      writeFileSync(testReportPath, JSON.stringify(reportContent, null, 2));
+
       const taskId = (
         await connection.collections['tasks'].insertOne({
           filePath: '/path/to/file.xlsx',
           status: TaskStatus.FAILED,
-          reportPath: '/path/to/report.json',
+          reportPath: testReportPath,
+        })
+      ).insertedId;
+
+      const response = await request(server)
+        .get(`/tasks/report/${taskId.toString()}`)
+        .set('x-api-key', validApiKey)
+        .expect(200);
+
+      expect(response.headers['content-disposition']).toContain('attachment');
+      const body = JSON.parse(response.text) as ReportResponse['errors'];
+      expect(body).toHaveLength(1);
+      expect(body[0].row).toBe(2);
+      expect(body[0].reason).toBe('Missing required field: guestName');
+    });
+
+    it('should return empty errors when no report exists', async () => {
+      const taskId = (
+        await connection.collections['tasks'].insertOne({
+          filePath: '/path/to/file.xlsx',
+          status: TaskStatus.COMPLETED,
+          reportPath: '',
         })
       ).insertedId;
 
@@ -219,19 +297,31 @@ describe('TasksController (e2e)', () => {
         .expect(200);
 
       const body = response.body as ReportResponse;
-      expect(body.taskId).toBe(taskId.toString());
-      expect(body.reportPath).toEqual('/path/to/report.json');
+      expect(body.message).toBe('No errors found during processing');
+      expect(body.errors).toEqual([]);
     });
 
-    it('should reject status request without API key', async () => {
+    it('should reject report request without API key', async () => {
       const fakeId = '507f1f77bcf86cd799439011';
 
       const response = await request(server)
-        .get(`/tasks/status/${fakeId}`)
+        .get(`/tasks/report/${fakeId}`)
         .expect(401);
 
       const body = response.body as ErrorResponse;
       expect(body.message).toBe('Missing x-api-key header');
+    });
+
+    it('should return 404 for non-existent task', async () => {
+      const fakeId = '507f1f77bcf86cd799439011';
+
+      const response = await request(server)
+        .get(`/tasks/report/${fakeId}`)
+        .set('x-api-key', validApiKey)
+        .expect(404);
+
+      const body = response.body as ErrorResponse;
+      expect(body.message).toBe(`Task with ID ${fakeId} not found`);
     });
   });
 });

@@ -1,6 +1,6 @@
 # Booking Processing Service
 
-A NestJS service for processing reservation files (XLSX).
+A NestJS service for processing reservation files (XLSX) with async queue processing.
 
 ## Current Features
 
@@ -9,12 +9,21 @@ A NestJS service for processing reservation files (XLSX).
 - ✅ File size limit (10MB)
 - ✅ Optional API key authentication
 - ✅ Docker & Docker Compose support
-- ✅ MongoDB task storage (taskId, filePath, status, timestamps)
+- ✅ MongoDB storage for tasks and reservations
+- ✅ BullMQ queue for async file processing
+- ✅ Streaming XLSX parsing with ExcelJS (memory efficient)
+- ✅ Validation with class-validator
+- ✅ Error report generation with row numbers and suggestions
+- ✅ Duplicate detection within files
+- ✅ Business logic: cancelled/completed reservations only update existing records
 
 ## Tech Stack
 
 - **NestJS** - Node.js framework
-- **MongoDB/Mongoose** - Database for task storage
+- **MongoDB/Mongoose** - Database for tasks and reservations
+- **BullMQ/Redis** - Async job queue processing
+- **ExcelJS** - Streaming XLSX file parsing
+- **class-validator/class-transformer** - DTO validation
 - **Multer** - File upload handling (with streaming via `diskStorage`)
 - **TypeScript** - Type safety
 
@@ -22,10 +31,10 @@ A NestJS service for processing reservation files (XLSX).
 
 This project uses some simplified solutions for development purposes:
 
-| Area | Current (Dev) | Production Alternative |
-|------|---------------|------------------------|
-| File Storage | Local disk (`./uploads`) | AWS S3, Google Cloud Storage, Azure Blob |
-| Authentication | Single API key in env for all users | JWT tokens, OAuth2, API keys per user/client stored in DB |
+| Area | Current (Dev)                                                                     | Production Alternative |
+|------|-----------------------------------------------------------------------------------|------------------------|
+| File Storage | Local disk (`./uploads` for uploaded files and `./reports` for generated reports) | AWS S3, Google Cloud Storage, Azure Blob |
+| Authentication | Single API key in env for all users                                               | JWT tokens, OAuth2, API keys per user/client stored in DB |
 
 > **Note:** Switching to cloud storage would require replacing `diskStorage` with a streaming upload to the cloud provider (e.g., using `multer-s3` for AWS S3).
 
@@ -41,20 +50,37 @@ This project uses some simplified solutions for development purposes:
 src/
 ├── app.module.ts                  # Main application module
 ├── common/
+│   ├── constants.ts               # Shared constants (queue names)
 │   └── guards/
 │       └── api-key.guard.ts       # API key authentication guard
-└── tasks/
-    ├── schemas/
-    │   └── task.schema.ts         # MongoDB Task schema
-    ├── tasks.module.ts            # Tasks module
-    ├── tasks.controller.ts        # File upload endpoint
-    └── tasks.service.ts           # Task business logic
+├── tasks/
+│   ├── schemas/
+│   │   └── task.schema.ts         # MongoDB Task schema
+│   ├── tasks.module.ts            # Tasks module
+│   ├── tasks.controller.ts        # REST endpoints (upload, status, report)
+│   └── tasks.service.ts           # Task business logic
+├── reservations/
+│   ├── schemas/
+│   │   └── reservation.schema.ts  # MongoDB Reservation schema
+│   ├── dto/
+│   │   └── reservation-row.dto.ts # DTO with validation decorators
+│   ├── reservations.module.ts     # Reservations module
+│   └── reservations.service.ts    # Reservation business logic
+├── processing/
+│   ├── processing.module.ts       # Processing module (BullMQ)
+│   └── file.processor.ts          # Queue worker for XLSX processing
+└── reports/
+    ├── reports.module.ts          # Reports module
+    ├── reports.service.ts         # Error report generation
+    ├── report-error-code.enum.ts  # Error code enumeration
+    └── raw-report-error.interface.ts # Raw error interface
 uploads/                           # Uploaded files are stored here
+reports/                           # Generated error reports
 scripts/
 └── generate-sample.js             # Script to generate sample XLSX file
 Dockerfile                         # Docker image definition
-docker-compose.yml                 # Full stack (app + MongoDB)
-docker-compose.dev.yml             # Development (MongoDB only)
+docker-compose.yml                 # Full stack (app + MongoDB + Redis)
+docker-compose.dev.yml             # Development (MongoDB + Redis only)
 ```
 
 ## Installation
@@ -177,6 +203,52 @@ x-api-key: your-secret-api-key  # Required if API_KEY is set
 - `401` - Invalid API key
 - `404` - Task not found
 
+### Download Error Report
+
+```http
+GET /tasks/report/:taskId
+x-api-key: your-secret-api-key  # Required if API_KEY is set
+```
+
+**Response (when errors exist):** Downloads JSON file with error details.
+
+```json
+[
+  {
+    "row": 2,
+    "reason": "Missing required field: guestName",
+    "suggestion": "Provide value for field \"guestName\""
+  },
+  {
+    "row": 5,
+    "reason": "Invalid reservation status",
+    "suggestion": "Use one of allowed values: oczekująca, zrealizowana, anulowana"
+  }
+]
+```
+
+**Response (when no errors):**
+```json
+{
+  "message": "No errors found during processing",
+  "errors": []
+}
+```
+
+**Error types:**
+| Error | Reason | Suggestion |
+|-------|--------|------------|
+| `MISSING_FIELD` | Missing required field: {field} | Provide value for field "{field}" |
+| `INVALID_DATE` | Invalid date format in field: {field} | Use YYYY-MM-DD format |
+| `INVALID_STATUS` | Invalid reservation status | Use one of allowed values: oczekująca, zrealizowana, anulowana |
+| `CHECKOUT_BEFORE_CHECKIN` | Check-out date is before check-in date | Ensure check-out date is after check-in date |
+| `DUPLICATE` | Duplicate reservation ID: {id} | Remove duplicate entry or use unique reservation ID |
+
+**Errors:**
+- `401` - Missing x-api-key header (when API_KEY is configured)
+- `401` - Invalid API key
+- `404` - Task not found
+
 ### Example with cURL
 
 ```bash
@@ -193,6 +265,10 @@ curl http://localhost:3000/tasks/status/507f1f77bcf86cd799439011
 
 # Get task status (with API key)
 curl http://localhost:3000/tasks/status/507f1f77bcf86cd799439011 \
+  -H "x-api-key: your-secret-api-key"
+
+# Download error report
+curl -O http://localhost:3000/tasks/report/507f1f77bcf86cd799439011 \
   -H "x-api-key: your-secret-api-key"
 ```
 
@@ -217,6 +293,7 @@ pnpm test:cov
 
 ```bash
 node scripts/generate-sample.js
+node scripts/generate-sample-with-errors.js
 ```
 
 This creates `sample-reservations.xlsx` with example reservation data:
@@ -226,14 +303,3 @@ This creates `sample-reservations.xlsx` with example reservation data:
 | 12345 | Jan Nowak | oczekująca | 2024-05-01 | 2024-05-07 |
 | 12346 | Anna Kowal | anulowana | 2024-06-10 | 2024-06-15 |
 | ... | ... | ... | ... | ... |
-
-## TODO (Remaining Features)
-
-- [x] `GET /tasks/status/:taskId` - Check task status endpoint
-- [ ] `GET /tasks/report/:taskId` - Download error report endpoint
-- [ ] BullMQ queue for async file processing
-- [ ] XLSX file parsing and validation
-- [ ] Reservation storage in MongoDB
-- [ ] Error report generation
-- [ ] WebSocket for real-time status updates (optional)
-
