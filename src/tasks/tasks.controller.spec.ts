@@ -16,6 +16,16 @@ describe('TasksController', () => {
     findById: jest.fn(),
   };
 
+  const mockReportPath = '/path/to/report.json';
+  const mockDate = new Date();
+  const mockTask = {
+    _id: mockObjectId,
+    status: TaskStatus.COMPLETED,
+    createdAt: mockDate,
+    updatedAt: mockDate,
+    reportPath: mockReportPath,
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [TasksController],
@@ -54,12 +64,6 @@ describe('TasksController', () => {
         stream: Readable.from([]),
       };
 
-      const mockTask = {
-        _id: mockObjectId,
-        filePath: mockFile.path,
-        status: TaskStatus.PENDING,
-      };
-
       mockTasksService.createTask.mockResolvedValue(mockTask);
 
       const result = await controller.uploadFile(mockFile);
@@ -89,60 +93,21 @@ describe('TasksController', () => {
 
   describe('getTaskStatus', () => {
     it('should return task status when task exists', async () => {
-      const mockDate = new Date();
-      const mockTask = {
-        _id: mockObjectId,
-        status: TaskStatus.PENDING,
-        createdAt: mockDate,
-        updatedAt: mockDate,
-        errorReport: [],
-      };
-
       mockTasksService.findById.mockResolvedValue(mockTask);
 
       const result = await controller.getTaskStatus(mockObjectId.toString());
 
       expect(result).toEqual({
         taskId: mockObjectId.toString(),
-        status: TaskStatus.PENDING,
+        status: TaskStatus.COMPLETED,
         createdAt: mockDate,
         updatedAt: mockDate,
-        errorReport: [],
+        reportPath: mockReportPath,
       });
+
       expect(mockTasksService.findById).toHaveBeenCalledWith(
         mockObjectId.toString(),
       );
-    });
-
-    it('should return task with error report when processing failed', async () => {
-      const mockDate = new Date();
-      const mockErrorReport = [
-        {
-          row: 2,
-          reason: 'Invalid date format',
-          suggestion: 'Use YYYY-MM-DD format',
-        },
-        {
-          row: 5,
-          reason: 'Missing status',
-          suggestion: 'Add status: oczekująca, zrealizowana, or anulowana',
-        },
-      ];
-      const mockTask = {
-        _id: mockObjectId,
-        status: TaskStatus.FAILED,
-        createdAt: mockDate,
-        updatedAt: mockDate,
-        errorReport: mockErrorReport,
-      };
-
-      mockTasksService.findById.mockResolvedValue(mockTask);
-
-      const result = await controller.getTaskStatus(mockObjectId.toString());
-
-      expect(result.status).toBe(TaskStatus.FAILED);
-      expect(result.errorReport).toHaveLength(2);
-      expect(result.errorReport[0].row).toBe(2);
     });
 
     it('should throw NotFoundException when task does not exist', async () => {

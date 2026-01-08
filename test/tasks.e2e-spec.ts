@@ -16,6 +16,7 @@ import { Task, TaskSchema } from '../src/tasks/schemas/task.schema';
 import { ApiKeyGuard } from '../src/common/guards/api-key.guard';
 import { TaskStatus } from '../src/tasks/schemas/task.schema';
 import { TASKS_QUEUE } from '../src/common/constants';
+import { ReportsService } from '../src/reports/reports.service';
 
 interface UploadResponse {
   message: string;
@@ -27,12 +28,12 @@ interface StatusResponse {
   status: string;
   createdAt: string;
   updatedAt: string;
-  errorReport: Array<{ row: number; reason: string; suggestion: string }>;
+  reportPath: string;
 }
 
 interface ReportResponse {
   taskId: string;
-  errorReport: Array<{ row: number; reason: string; suggestion: string }>;
+  reportPath: string;
 }
 
 interface ErrorResponse {
@@ -85,6 +86,7 @@ describe('TasksController (e2e)', () => {
           provide: APP_GUARD,
           useClass: ApiKeyGuard,
         },
+        ReportsService,
       ],
     }).compile();
 
@@ -170,24 +172,22 @@ describe('TasksController (e2e)', () => {
 
   describe('GET /tasks/status/:taskId', () => {
     it('should return task status', async () => {
-      // Upload file first
-      const uploadResponse = await request(server)
-        .post('/tasks/upload')
-        .set('x-api-key', validApiKey)
-        .attach('file', testFilePath)
-        .expect(201);
-
-      const { taskId } = uploadResponse.body as UploadResponse;
+      const taskId = (
+        await connection.collections['tasks'].insertOne({
+          filePath: '/path/to/file.xlsx',
+          status: TaskStatus.PENDING,
+        })
+      ).insertedId;
 
       // Get status
       const response = await request(server)
-        .get(`/tasks/status/${taskId}`)
+        .get(`/tasks/status/${taskId.toString()}`)
         .set('x-api-key', validApiKey)
         .expect(200);
 
       const body = response.body as StatusResponse;
 
-      expect(body.taskId).toBe(taskId);
+      expect(body.taskId).toBe(taskId.toString());
       expect(body.status).toBe(TaskStatus.PENDING);
     });
 
@@ -209,9 +209,7 @@ describe('TasksController (e2e)', () => {
         await connection.collections['tasks'].insertOne({
           filePath: '/path/to/file.xlsx',
           status: TaskStatus.FAILED,
-          errorReport: [
-            { row: 2, reason: 'Invalid date', suggestion: 'Use YYYY-MM-DD' },
-          ],
+          reportPath: '/path/to/report.json',
         })
       ).insertedId;
 
@@ -222,13 +220,7 @@ describe('TasksController (e2e)', () => {
 
       const body = response.body as ReportResponse;
       expect(body.taskId).toBe(taskId.toString());
-      expect(body.errorReport).toEqual([
-        {
-          reason: 'Invalid date',
-          row: 2,
-          suggestion: 'Use YYYY-MM-DD',
-        },
-      ]);
+      expect(body.reportPath).toEqual('/path/to/report.json');
     });
 
     it('should reject status request without API key', async () => {

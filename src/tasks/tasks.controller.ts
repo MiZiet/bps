@@ -8,7 +8,9 @@ import {
   BadRequestException,
   NotFoundException,
   Logger,
+  Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
@@ -96,7 +98,7 @@ export class TasksController {
       status: task.status,
       createdAt: task.createdAt,
       updatedAt: task.updatedAt,
-      errorReport: task.errorReport,
+      reportPath: task.reportPath,
     };
   }
 
@@ -109,7 +111,7 @@ export class TasksController {
    *   curl http://localhost:3000/tasks/report/507f1f77bcf86cd799439011
    */
   @Get('report/:taskId')
-  async getTaskReport(@Param('taskId') taskId: string) {
+  async getTaskReport(@Param('taskId') taskId: string, @Res() res: Response) {
     this.logger.log(`Getting report for task ${taskId}`);
 
     const task = await this.tasksService.findById(taskId);
@@ -118,9 +120,6 @@ export class TasksController {
       throw new NotFoundException(`Task with ID ${taskId} not found`);
     }
 
-    return {
-      taskId: task._id.toString(),
-      errorReport: task.errorReport,
-    };
+    return res.download(task.reportPath);
   }
 }

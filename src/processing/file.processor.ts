@@ -1,14 +1,17 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Logger } from '@nestjs/common';
+import { Logger, ValidationError } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import * as ExcelJS from 'exceljs';
 import { TASKS_QUEUE } from '../common/constants';
 import { TasksService } from '../tasks/tasks.service';
-import { TaskStatus, ErrorReportItem } from '../tasks/schemas/task.schema';
+import { TaskStatus } from '../tasks/schemas/task.schema';
 import { ReservationsService } from '../reservations/reservations.service';
 import { ReservationRowDto } from '../reservations/dto/reservation-row.dto';
+import { ReportsService } from '../reports/reports.service';
+import { RawReportError } from '../reports/raw-report-error.interface';
+import { ReportErrorCode } from '../reports/report-error-code.enum';
 
 export interface TaskJobData {
   taskId: string;
@@ -32,6 +35,7 @@ export class FileProcessor extends WorkerHost {
   constructor(
     private readonly tasksService: TasksService,
     private readonly reservationsService: ReservationsService,
+    private readonly reportService: ReportsService,
   ) {
     super();
   }
@@ -48,7 +52,7 @@ export class FileProcessor extends WorkerHost {
 
     await this.tasksService.updateStatus(taskId, TaskStatus.IN_PROGRESS);
 
-    const errorReport: ErrorReportItem[] = [];
+    const rawErrors: RawReportError[] = [];
     let processedRows = 0;
 
     try {
@@ -58,41 +62,35 @@ export class FileProcessor extends WorkerHost {
       });
 
       for await (const worksheet of workbook) {
-        let isFirstRow = true;
+        let header = true;
 
         for await (const row of worksheet) {
           // Skip header row
-          if (isFirstRow) {
-            isFirstRow = false;
+          if (header) {
+            header = false;
             continue;
           }
 
           processedRows++;
-          const rowNumber = row.number;
 
           try {
             const dto = this.mapRowToDto(row);
+            const validationErrors = await validate(dto);
 
-            // Validate DTO
-            const validationErrors = await this.validateDto(dto);
             if (validationErrors.length > 0) {
-              errorReport.push({
-                row: rowNumber,
-                reason: validationErrors.join('; '),
-                suggestion: this.getSuggestionForErrors(validationErrors),
-              });
+              rawErrors.push(
+                ...this.mapValidationErrors(row.number, validationErrors),
+              );
               continue;
             }
 
             // Process valid reservation
             await this.reservationsService.processReservation(dto);
-          } catch (error) {
-            const message =
-              error instanceof Error ? error.message : 'Unknown error';
-            errorReport.push({
-              row: rowNumber,
-              reason: message,
-              suggestion: 'Check data validity in row',
+          } catch (err) {
+            rawErrors.push({
+              row: row.number,
+              code: ReportErrorCode.UNKNOWN,
+              message: err instanceof Error ? err.message : 'Unknown error',
             });
           }
         }
@@ -100,29 +98,34 @@ export class FileProcessor extends WorkerHost {
 
       this.logger.log(`Read ${processedRows} rows from file`);
 
-      const finalStatus =
-        errorReport.length > 0 ? TaskStatus.FAILED : TaskStatus.COMPLETED;
+      const report = await this.reportService.generateReport(taskId, rawErrors);
 
-      await this.tasksService.completeTask(taskId, finalStatus, errorReport);
+      await this.tasksService.completeTask(
+        taskId,
+        TaskStatus.COMPLETED,
+        report.path,
+      );
 
       this.logger.log(
-        `Task ${taskId} completed. Processed ${processedRows} rows, ${errorReport.length} errors`,
+        `Task ${taskId} completed. Processed ${processedRows} rows, ${rawErrors.length} errors`,
       );
     } catch (error) {
       const message =
         error instanceof Error ? error.message : 'Unknown processing error';
       this.logger.error(`Task ${taskId} failed: ${message}`);
 
-      errorReport.push({
-        row: 0,
-        reason: `File processing error: ${message}`,
-        suggestion: 'Check if XLSX file is valid',
-      });
+      const report = await this.reportService.generateReport(taskId, [
+        {
+          row: 0,
+          code: ReportErrorCode.UNKNOWN,
+          message: 'File processing failed',
+        },
+      ]);
 
       await this.tasksService.completeTask(
         taskId,
         TaskStatus.FAILED,
-        errorReport,
+        report.path,
       );
     }
   }
@@ -203,36 +206,30 @@ export class FileProcessor extends WorkerHost {
     return new Date(excelEpoch.getTime() + excelDate * msPerDay);
   }
 
-  private async validateDto(dto: ReservationRowDto): Promise<string[]> {
-    const errors = await validate(dto);
-    return errors.flatMap((err) =>
-      Object.values(err.constraints || {}).map((msg) => msg),
-    );
+  private mapValidationErrors(
+    row: number,
+    errors: ValidationError[],
+  ): RawReportError[] {
+    return errors.map((err) => ({
+      row,
+      code: this.mapConstraintToErrorCode(err),
+      field: err.property,
+    }));
   }
 
-  private getSuggestionForErrors(errors: string[]): string {
-    const suggestions: string[] = [];
+  private mapConstraintToErrorCode(error: ValidationError): ReportErrorCode {
+    const constraints = Object.keys(error.constraints ?? {});
 
-    for (const error of errors) {
-      if (error.toLowerCase().includes('reservation id')) {
-        suggestions.push('Add unique reservation ID');
-      } else if (error.toLowerCase().includes('guest name')) {
-        suggestions.push('Add guest name');
-      } else if (error.toLowerCase().includes('status')) {
-        suggestions.push(
-          'Use one of allowed statuses: oczekująca, zrealizowana, anulowana',
-        );
-      } else if (error.toLowerCase().includes('check-in')) {
-        suggestions.push('Use YYYY-MM-DD date format for check-in date');
-      } else if (error.toLowerCase().includes('check-out')) {
-        suggestions.push('Use YYYY-MM-DD date format for check-out date');
-      } else if (error.toLowerCase().includes('after')) {
-        suggestions.push('Ensure check-out date is after check-in date');
-      }
+    if (constraints.includes('isEnum')) {
+      return ReportErrorCode.INVALID_STATUS;
+    }
+    if (constraints.includes('isDateString')) {
+      return ReportErrorCode.INVALID_DATE;
+    }
+    if (constraints.includes('isNotEmpty')) {
+      return ReportErrorCode.MISSING_FIELD;
     }
 
-    return suggestions.length > 0
-      ? suggestions.join('; ')
-      : 'Check data validity';
+    return ReportErrorCode.UNKNOWN;
   }
 }

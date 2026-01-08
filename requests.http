@@ -24,7 +24,7 @@ Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
 
 ### CONFIG
 # Fill with proper id
-@reportId = 695fafb26b6315195f9c48aa
+@reportId = 695fd6567d0087283334d877
 
 ### Get task status (replace taskId with actual ID from upload response)
 GET http://localhost:3000/tasks/status/{{reportId}}

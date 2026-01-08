@@ -4,6 +4,7 @@ import { FileProcessor } from './file.processor';
 import { TasksModule } from '../tasks/tasks.module';
 import { ReservationsModule } from '../reservations/reservations.module';
 import { TASKS_QUEUE } from '../common/constants';
+import { ReportsModule } from '../reports/reports.module';
 
 @Module({
   imports: [
@@ -12,6 +13,7 @@ import { TASKS_QUEUE } from '../common/constants';
     }),
     TasksModule,
     ReservationsModule,
+    ReportsModule,
   ],
   providers: [FileProcessor],
 })
