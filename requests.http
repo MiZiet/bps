@@ -22,10 +22,14 @@ Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
 < ./scripts/sample-reservations-with-errors.xlsx
 ------WebKitFormBoundary7MA4YWxkTrZu0gW--
 
+### CONFIG
+# Fill with proper id
+@reportId = 695fafb26b6315195f9c48aa
+
 ### Get task status (replace taskId with actual ID from upload response)
-GET http://localhost:3000/tasks/status/695fa986534eefcc6a01aed8
+GET http://localhost:3000/tasks/status/{{reportId}}
 x-api-key: your-secret-api-key
 
 ### Get task report (replace taskId with actual ID from upload response)
-GET http://localhost:3000/tasks/report/695fa986534eefcc6a01aed8
+GET http://localhost:3000/tasks/report/{{reportId}}
 x-api-key: your-secret-api-key
