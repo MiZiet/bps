@@ -10,7 +10,7 @@ A NestJS service for processing reservation files (XLSX) with async queue proces
 - ✅ Optional API key authentication
 - ✅ Docker & Docker Compose support
 - ✅ MongoDB storage for tasks and reservations
-- ✅ BullMQ queue for async file processing
+- ✅ BullMQ queue for async file processing with retry mechanism
 - ✅ Streaming XLSX parsing with ExcelJS (memory efficient)
 - ✅ Validation with class-validator
 - ✅ Error report generation with row numbers and suggestions
@@ -275,6 +275,29 @@ curl -O http://localhost:3000/tasks/report/507f1f77bcf86cd799439011 \
 ### Example with HTTP file (JetBrains IDE)
 
 Use the `requests.http` file in the project root.
+
+## Queue Processing & Retries
+
+The service uses BullMQ for async file processing with built-in retry mechanism:
+
+| Setting | Value | Description |
+|---------|-------|-------------|
+| `attempts` | 3 | Maximum retry attempts |
+| `backoff.type` | exponential | Backoff strategy |
+| `backoff.delay` | 1000ms | Initial delay (1s → 2s → 4s) |
+| `removeOnComplete` | true | Clean up successful jobs |
+| `removeOnFail` | false | Keep failed jobs for inspection |
+
+**Logging:**
+- Retry attempts are logged with `WARN` level
+- Permanent failures are logged with `ERROR` level
+
+**Example log output:**
+```
+[FileProcessor] Task 507f1f77... failed (attempt 1/3), will retry: ENOENT: no such file
+[FileProcessor] Task 507f1f77... failed (attempt 2/3), will retry: ENOENT: no such file
+[FileProcessor] Task 507f1f77... failed permanently after 3 attempts: ENOENT: no such file
+```
 
 ## Testing
 

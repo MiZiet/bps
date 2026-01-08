@@ -1,4 +1,4 @@
-import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
 import { Logger, ValidationError } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { plainToInstance } from 'class-transformer';
@@ -252,5 +252,27 @@ export class FileProcessor extends WorkerHost {
     }
 
     return ReportErrorCode.UNKNOWN;
+  }
+
+  @OnWorkerEvent('failed')
+  onFailed(job: Job<TaskJobData>, error: Error) {
+    const { taskId } = job.data;
+    const attemptsMade = job.attemptsMade;
+    const maxAttempts = job.opts.attempts ?? 1;
+
+    if (attemptsMade < maxAttempts) {
+      this.logger.warn(
+        `Task ${taskId} failed (attempt ${attemptsMade}/${maxAttempts}), will retry: ${error.message}`,
+      );
+    } else {
+      this.logger.error(
+        `Task ${taskId} failed permanently after ${attemptsMade} attempts: ${error.message}`,
+      );
+    }
+  }
+
+  @OnWorkerEvent('error')
+  onError(error: Error) {
+    this.logger.error(`Worker error: ${error.message}`);
   }
 }

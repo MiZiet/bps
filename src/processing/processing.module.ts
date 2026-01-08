@@ -10,6 +10,15 @@ import { ReportsModule } from '../reports/reports.module';
   imports: [
     BullModule.registerQueue({
       name: TASKS_QUEUE,
+      defaultJobOptions: {
+        attempts: 3,
+        backoff: {
+          type: 'exponential',
+          delay: 1000, // 1s, 2s, 4s
+        },
+        removeOnComplete: true,
+        removeOnFail: false, // Keep failed jobs for inspection
+      },
     }),
     TasksModule,
     ReservationsModule,
