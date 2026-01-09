@@ -22,9 +22,21 @@ Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
 < ./scripts/sample-reservations-with-errors.xlsx
 ------WebKitFormBoundary7MA4YWxkTrZu0gW--
 
+### Upload large XLSX file (with API key)
+POST http://localhost:3000/tasks/upload
+x-api-key: your-secret-api-key
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW
+
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="file"; filename="test.xlsx"
+Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+
+< ./scripts/sample-reservations-large.xlsx
+------WebKitFormBoundary7MA4YWxkTrZu0gW--
+
 ### CONFIG
 # Fill with proper id
-@reportId = 695fd6567d0087283334d877
+@reportId = 6960dcc6e533be20ed5b9f11
 
 ### Get task status (replace taskId with actual ID from upload response)
 GET http://localhost:3000/tasks/status/{{reportId}}
