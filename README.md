@@ -14,8 +14,6 @@ A NestJS service for processing reservation files (XLSX) with async queue proces
 - ✅ Streaming XLSX parsing with ExcelJS (memory efficient)
 - ✅ Validation with class-validator
 - ✅ Error report generation with row numbers and suggestions
-- ✅ Duplicate detection within files
-- ✅ Business logic: cancelled/completed reservations only update existing records
 - ✅ WebSocket for real-time task status and progress updates
 
 ## Tech Stack
@@ -75,9 +73,7 @@ src/
 │   └── file.processor.ts          # Queue worker for XLSX processing
 └── reports/
     ├── reports.module.ts          # Reports module
-    ├── reports.service.ts         # Error report generation
-    ├── report-error-code.enum.ts  # Error code enumeration
-    └── raw-report-error.interface.ts # Raw error interface
+    └── reports.service.ts         # Error report generation
 uploads/                           # Uploaded files are stored here
 reports/                           # Generated error reports
 scripts/
