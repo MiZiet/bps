@@ -127,13 +127,6 @@ docker-compose -f docker-compose.dev.yml up -d
 pnpm start:dev
 ```
 
-### Production (without Docker)
-
-```bash
-pnpm build
-pnpm start:prod
-```
-
 ## API Endpoints
 
 ### Upload File
@@ -420,3 +413,28 @@ This creates `sample-reservations.xlsx` with example reservation data:
 | 12345 | Jan Nowak | oczekująca | 2024-05-01 | 2024-05-07 |
 | 12346 | Anna Kowal | anulowana | 2024-06-10 | 2024-06-15 |
 | ... | ... | ... | ... | ... |
+
+## Business Rules
+
+- Reservations with status `anulowana` (cancelled) or `zrealizowana` (completed) are only updated if they already exist in the database; new ones are ignored.
+- Reservations with status `oczekująca` (pending) or other allowed statuses are added or updated as needed.
+- Duplicate reservation IDs within a single file are detected and reported as errors.
+
+## Security Notes
+
+- File uploads are limited to 10MB and only `.xlsx` files are accepted.
+- All endpoints are protected by a single API key (if `API_KEY` is set in the environment). For development, this is sufficient, but for production, use per-user authentication and rate limiting.
+- All errors are handled with proper NestJS exceptions. Background jobs never crash the process; errors are logged and reported.
+
+## Known Limitations
+
+- No user management or per-user API keys (all users share the same API key if enabled).
+- No cloud storage integration (files and reports are stored locally for simplicity).
+- No rate limiting or brute-force protection on endpoints.
+- No automatic file cleanup (uploaded files and reports persist on disk).
+
+## Connecting to MongoDB/Redis
+
+- **MongoDB:** Use `mongodb://localhost:27017/booking-service` in MongoDB Compass or your preferred UI tool.
+- **Redis:** Use `redis://localhost:6379` in RedisInsight or your preferred Redis client.
+
