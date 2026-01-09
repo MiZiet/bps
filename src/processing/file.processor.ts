@@ -9,9 +9,11 @@ import { TasksService } from '../tasks/tasks.service';
 import { TaskStatus } from '../tasks/schemas/task.schema';
 import { ReservationsService } from '../reservations/reservations.service';
 import { ReservationRowDto } from '../reservations/dto/reservation-row.dto';
-import { ReportsService } from '../reports/reports.service';
-import { RawReportError } from '../reports/raw-report-error.interface';
-import { ReportErrorCode } from '../reports/report-error-code.enum';
+import {
+  ReportsService,
+  RawReportError,
+  ReportErrorCode,
+} from '../reports/reports.service';
 
 export interface TaskJobData {
   taskId: string;

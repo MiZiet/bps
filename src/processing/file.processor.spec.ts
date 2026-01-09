@@ -3,9 +3,8 @@ import { Job } from 'bullmq';
 import { FileProcessor, TaskJobData } from './file.processor';
 import { TasksService } from '../tasks/tasks.service';
 import { ReservationsService } from '../reservations/reservations.service';
-import { ReportsService } from '../reports/reports.service';
+import { ReportsService, ReportErrorCode } from '../reports/reports.service';
 import { TaskStatus } from '../tasks/schemas/task.schema';
-import { ReportErrorCode } from '../reports/report-error-code.enum';
 
 // Mock ExcelJS
 jest.mock('exceljs', () => ({

@@ -1,8 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import * as fs from 'fs/promises';
-import { ReportsService } from './reports.service';
-import { ReportErrorCode } from './report-error-code.enum';
-import { RawReportError } from './raw-report-error.interface';
+import {
+  ReportsService,
+  ReportErrorCode,
+  RawReportError,
+} from './reports.service';
 
 jest.mock('fs/promises');
 

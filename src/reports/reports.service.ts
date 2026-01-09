@@ -1,8 +1,22 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { ReportErrorCode } from './report-error-code.enum';
-import { RawReportError } from './raw-report-error.interface';
+
+export enum ReportErrorCode {
+  MISSING_FIELD = 'MISSING_FIELD',
+  INVALID_DATE = 'INVALID_DATE',
+  INVALID_STATUS = 'INVALID_STATUS',
+  CHECKOUT_BEFORE_CHECKIN = 'CHECKOUT_BEFORE_CHECKIN',
+  DUPLICATE = 'DUPLICATE',
+  UNKNOWN = 'UNKNOWN',
+}
+
+export interface RawReportError {
+  row: number;
+  code: ReportErrorCode;
+  field?: string;
+  message?: string;
+}
 
 interface ErrorReportItem {
   row: number;
