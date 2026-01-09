@@ -37,6 +37,7 @@ This project uses some simplified solutions for development purposes:
 |------|-----------------------------------------------------------------------------------|------------------------|
 | File Storage | Local disk (`./uploads` for uploaded files and `./reports` for generated reports) | AWS S3, Google Cloud Storage, Azure Blob |
 | Authentication | Single API key in env for all users                                               | JWT tokens, OAuth2, API keys per user/client stored in DB |
+| Reservation Processing | Each reservation is processed and written to the database one by one (sequentially) for reliability, error reporting, and simplicity. This is robust for most use cases. For very large files, batch processing (e.g., MongoDB `bulkWrite`) could be considered for higher throughput, but would require more complex error handling and reporting. | Batch processing with error aggregation and optimized DB writes |
 
 > **Note:** Switching to cloud storage would require replacing `diskStorage` with a streaming upload to the cloud provider (e.g., using `multer-s3` for AWS S3).
 
@@ -437,4 +438,3 @@ This creates `sample-reservations.xlsx` with example reservation data:
 
 - **MongoDB:** Use `mongodb://localhost:27017/booking-service` in MongoDB Compass or your preferred UI tool.
 - **Redis:** Use `redis://localhost:6379` in RedisInsight or your preferred Redis client.
-
