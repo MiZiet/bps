@@ -3,6 +3,7 @@ import { getModelToken } from '@nestjs/mongoose';
 import { getQueueToken } from '@nestjs/bullmq';
 import { Types } from 'mongoose';
 import { TasksService } from './tasks.service';
+import { TasksGateway } from './tasks.gateway';
 import { Task, TaskStatus } from './schemas/task.schema';
 import { TASKS_QUEUE } from '../common/constants';
 
@@ -31,6 +32,11 @@ describe('TasksService', () => {
     add: jest.fn().mockResolvedValue({ id: 'job-1' }),
   };
 
+  const mockTasksGateway = {
+    emitStatusUpdate: jest.fn(),
+    emitProgressUpdate: jest.fn(),
+  };
+
   // Mock constructor function
   const MockTaskModel = jest.fn().mockImplementation(() => mockTask);
   Object.assign(MockTaskModel, mockTaskModel);
@@ -46,6 +52,10 @@ describe('TasksService', () => {
         {
           provide: getQueueToken(TASKS_QUEUE),
           useValue: mockQueue,
+        },
+        {
+          provide: TasksGateway,
+          useValue: mockTasksGateway,
         },
       ],
     }).compile();
@@ -130,6 +140,51 @@ describe('TasksService', () => {
         { status: TaskStatus.COMPLETED },
         { new: true },
       );
+    });
+
+    it('should emit WebSocket status update', async () => {
+      mockTaskModel.findByIdAndUpdate.mockReturnValue({
+        exec: jest.fn().mockResolvedValue({ status: TaskStatus.IN_PROGRESS }),
+      });
+
+      await service.updateStatus(
+        mockObjectId.toString(),
+        TaskStatus.IN_PROGRESS,
+      );
+
+      expect(mockTasksGateway.emitStatusUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          taskId: mockObjectId.toString(),
+          status: TaskStatus.IN_PROGRESS,
+        }),
+      );
+    });
+  });
+
+  describe('emitProgress', () => {
+    it('should emit progress at interval boundaries (every 100 rows)', () => {
+      service.emitProgress('task-123', 100, 5);
+
+      expect(mockTasksGateway.emitProgressUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          taskId: 'task-123',
+          processedRows: 100,
+          errorCount: 5,
+        }),
+      );
+    });
+
+    it('should not emit progress between intervals', () => {
+      service.emitProgress('task-123', 50, 2);
+
+      expect(mockTasksGateway.emitProgressUpdate).not.toHaveBeenCalled();
+    });
+
+    it('should emit at 200, 300, etc.', () => {
+      service.emitProgress('task-123', 200, 10);
+      service.emitProgress('task-123', 300, 15);
+
+      expect(mockTasksGateway.emitProgressUpdate).toHaveBeenCalledTimes(2);
     });
   });
 });

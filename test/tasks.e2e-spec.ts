@@ -12,6 +12,7 @@ import { Connection } from 'mongoose';
 import { setupTestDatabase, teardownTestDatabase } from './setup-e2e';
 import { TasksController } from '../src/tasks/tasks.controller';
 import { TasksService } from '../src/tasks/tasks.service';
+import { TasksGateway } from '../src/tasks/tasks.gateway';
 import { Task, TaskSchema } from '../src/tasks/schemas/task.schema';
 import { ApiKeyGuard } from '../src/common/guards/api-key.guard';
 import { TaskStatus } from '../src/tasks/schemas/task.schema';
@@ -81,6 +82,13 @@ describe('TasksController (e2e)', () => {
         {
           provide: getQueueToken(TASKS_QUEUE),
           useValue: mockQueue,
+        },
+        {
+          provide: TasksGateway,
+          useValue: {
+            emitStatusUpdate: jest.fn(),
+            emitProgressUpdate: jest.fn(),
+          },
         },
         {
           provide: APP_GUARD,

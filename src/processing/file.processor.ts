@@ -87,6 +87,12 @@ export class FileProcessor extends WorkerHost {
                 code: ReportErrorCode.DUPLICATE,
                 field: dto.reservationId,
               });
+              // Emit progress even on errors
+              this.tasksService.emitProgress(
+                taskId,
+                processedRows,
+                rawErrors.length,
+              );
               continue;
             }
 
@@ -95,6 +101,12 @@ export class FileProcessor extends WorkerHost {
             if (validationErrors.length > 0) {
               rawErrors.push(
                 ...this.mapValidationErrors(row.number, validationErrors),
+              );
+              // Emit progress even on errors
+              this.tasksService.emitProgress(
+                taskId,
+                processedRows,
+                rawErrors.length,
               );
               continue;
             }
@@ -111,6 +123,13 @@ export class FileProcessor extends WorkerHost {
               message: err instanceof Error ? err.message : 'Unknown error',
             });
           }
+
+          // Emit progress update via WebSocket
+          this.tasksService.emitProgress(
+            taskId,
+            processedRows,
+            rawErrors.length,
+          );
         }
       }
 

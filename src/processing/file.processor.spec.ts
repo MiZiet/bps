@@ -25,6 +25,7 @@ describe('FileProcessor', () => {
     findById: jest.fn(),
     updateStatus: jest.fn(),
     completeTask: jest.fn(),
+    emitProgress: jest.fn(),
   };
 
   const mockReservationsService = {

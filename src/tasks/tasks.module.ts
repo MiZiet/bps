@@ -3,6 +3,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { BullModule } from '@nestjs/bullmq';
 import { TasksController } from './tasks.controller';
 import { TasksService } from './tasks.service';
+import { TasksGateway } from './tasks.gateway';
 import { Task, TaskSchema } from './schemas/task.schema';
 import { TASKS_QUEUE } from '../common/constants';
 
@@ -14,7 +15,7 @@ import { TASKS_QUEUE } from '../common/constants';
     }),
   ],
   controllers: [TasksController],
-  providers: [TasksService],
-  exports: [TasksService],
+  providers: [TasksService, TasksGateway],
+  exports: [TasksService, TasksGateway],
 })
 export class TasksModule {}

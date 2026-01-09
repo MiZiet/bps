@@ -16,6 +16,7 @@ A NestJS service for processing reservation files (XLSX) with async queue proces
 - ✅ Error report generation with row numbers and suggestions
 - ✅ Duplicate detection within files
 - ✅ Business logic: cancelled/completed reservations only update existing records
+- ✅ WebSocket for real-time task status and progress updates
 
 ## Tech Stack
 
@@ -25,6 +26,7 @@ A NestJS service for processing reservation files (XLSX) with async queue proces
 - **ExcelJS** - Streaming XLSX file parsing
 - **class-validator/class-transformer** - DTO validation
 - **Multer** - File upload handling (with streaming via `diskStorage`)
+- **Socket.io** - WebSocket for real-time updates
 - **TypeScript** - Type safety
 
 ## Simplifications & Trade-offs
@@ -58,6 +60,7 @@ src/
 │   │   └── task.schema.ts         # MongoDB Task schema
 │   ├── tasks.module.ts            # Tasks module
 │   ├── tasks.controller.ts        # REST endpoints (upload, status, report)
+│   ├── tasks.gateway.ts           # WebSocket gateway for real-time updates
 │   └── tasks.service.ts           # Task business logic
 ├── reservations/
 │   ├── schemas/
@@ -298,6 +301,97 @@ The service uses BullMQ for async file processing with built-in retry mechanism:
 [FileProcessor] Task 507f1f77... failed (attempt 2/3), will retry: ENOENT: no such file
 [FileProcessor] Task 507f1f77... failed permanently after 3 attempts: ENOENT: no such file
 ```
+
+## WebSocket - Real-time Status Updates
+
+The service provides WebSocket support for real-time task status and progress updates using Socket.io.
+
+**Endpoint:** `ws://localhost:3000/tasks`
+
+### Client Usage (JavaScript)
+
+```javascript
+import { io } from 'socket.io-client';
+
+// Connect to WebSocket (without authentication)
+const socket = io('http://localhost:3000/tasks');
+
+// Connect with API key authentication (when API_KEY is configured)
+const socket = io('http://localhost:3000/tasks', {
+  auth: { apiKey: 'your-secret-api-key' }
+});
+
+// Alternative: API key via query params
+const socket = io('http://localhost:3000/tasks?apiKey=your-secret-api-key');
+
+// Subscribe to task updates
+socket.emit('subscribe', { taskId: '507f1f77bcf86cd799439011' });
+
+// Listen for status updates (PENDING → IN_PROGRESS → COMPLETED/FAILED)
+socket.on('status', (data) => {
+  console.log('Task status updated:', data);
+  // {
+  //   taskId: '507f1f77bcf86cd799439011',
+  //   status: 'COMPLETED',
+  //   timestamp: '2026-01-08T12:00:00.000Z',
+  //   reportPath: '/reports/507f1f77...-report.json'  // only when errors exist
+  // }
+});
+
+// Listen for progress updates (emitted every 100 rows during processing)
+socket.on('progress', (data) => {
+  console.log('Processing progress:', data);
+  // {
+  //   taskId: '507f1f77bcf86cd799439011',
+  //   processedRows: 100,
+  //   errorCount: 2,
+  //   timestamp: '2026-01-08T12:00:00.000Z'
+  // }
+});
+
+// Unsubscribe when done
+socket.emit('unsubscribe', { taskId: '507f1f77bcf86cd799439011' });
+```
+
+### Events
+
+| Event | Direction | Payload | Description |
+|-------|-----------|---------|-------------|
+| `subscribe` | Client → Server | `{ taskId: string }` | Subscribe to updates for a task |
+| `unsubscribe` | Client → Server | `{ taskId: string }` | Unsubscribe from task updates |
+| `status` | Server → Client | `TaskStatusUpdate` | Emitted when task status changes |
+| `progress` | Server → Client | `TaskProgressUpdate` | Emitted every 100 rows during processing |
+
+### Payload Types
+
+```typescript
+interface TaskStatusUpdate {
+  taskId: string;
+  status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED';
+  timestamp: Date;
+  reportPath?: string;  // Present when task has errors
+}
+
+interface TaskProgressUpdate {
+  taskId: string;
+  processedRows: number;  // Number of rows processed so far
+  errorCount: number;     // Number of errors encountered
+  timestamp: Date;
+}
+```
+
+### Authentication
+
+When `API_KEY` environment variable is set, WebSocket connections require authentication:
+
+| Method | Example |
+|--------|---------|
+| `auth` object (recommended) | `io(url, { auth: { apiKey: 'key' } })` |
+| Query parameter | `io(url + '?apiKey=key')` |
+
+**Errors:**
+- Connection rejected with "Missing API key in WebSocket handshake" if key not provided
+- Connection rejected with "Invalid API key" if key is wrong
 
 ## Testing
 

@@ -4,8 +4,12 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Model } from 'mongoose';
 import { Queue } from 'bullmq';
 import { Task, TaskDocument, TaskStatus } from './schemas/task.schema';
+import { TasksGateway } from './tasks.gateway';
 import { TASKS_QUEUE } from '../common/constants';
 import { TaskJobData } from '../processing/file.processor';
+
+// Emit progress update every N rows to avoid flooding the WebSocket
+const PROGRESS_EMIT_INTERVAL = 100;
 
 @Injectable()
 export class TasksService {
@@ -14,6 +18,7 @@ export class TasksService {
   constructor(
     @InjectModel(Task.name) private taskModel: Model<TaskDocument>,
     @InjectQueue(TASKS_QUEUE) private tasksQueue: Queue<TaskJobData>,
+    private readonly tasksGateway: TasksGateway,
   ) {}
 
   /**
@@ -52,9 +57,18 @@ export class TasksService {
   ): Promise<TaskDocument | null> {
     this.logger.log(`Updating task ${taskId} status to ${status}`);
 
-    return this.taskModel
+    const task = await this.taskModel
       .findByIdAndUpdate(taskId, { status }, { new: true })
       .exec();
+
+    // Emit WebSocket update
+    this.tasksGateway.emitStatusUpdate({
+      taskId,
+      status,
+      timestamp: new Date(),
+    });
+
+    return task;
   }
 
   /**
@@ -69,9 +83,39 @@ export class TasksService {
       `Completing task ${taskId} with status ${status}, reported saved at ${reportPath}`,
     );
 
-    return this.taskModel.findByIdAndUpdate(taskId, {
+    const task = await this.taskModel.findByIdAndUpdate(taskId, {
       status,
       reportPath,
     });
+
+    // Emit WebSocket update
+    this.tasksGateway.emitStatusUpdate({
+      taskId,
+      status,
+      timestamp: new Date(),
+      reportPath,
+    });
+
+    return task;
+  }
+
+  /**
+   * Emit progress update via WebSocket.
+   * Only emits every PROGRESS_EMIT_INTERVAL rows to avoid flooding.
+   */
+  emitProgress(
+    taskId: string,
+    processedRows: number,
+    errorCount: number,
+  ): void {
+    // Only emit on interval boundaries
+    if (processedRows % PROGRESS_EMIT_INTERVAL === 0) {
+      this.tasksGateway.emitProgressUpdate({
+        taskId,
+        processedRows,
+        errorCount,
+        timestamp: new Date(),
+      });
+    }
   }
 }
