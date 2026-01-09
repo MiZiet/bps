@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Job } from 'bullmq';
 import { FileProcessor, TaskJobData } from './file.processor';
@@ -19,6 +20,8 @@ import * as ExcelJS from 'exceljs';
 
 describe('FileProcessor', () => {
   let processor: FileProcessor;
+  let loggerErrorSpy: jest.SpyInstance;
+  let loggerLogSpy: jest.SpyInstance;
 
   const mockTasksService = {
     findById: jest.fn(),
@@ -36,6 +39,9 @@ describe('FileProcessor', () => {
   };
 
   beforeEach(async () => {
+    loggerErrorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation();
+    loggerLogSpy = jest.spyOn(Logger.prototype, 'log').mockImplementation();
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         FileProcessor,
@@ -50,6 +56,8 @@ describe('FileProcessor', () => {
 
   afterEach(() => {
     jest.clearAllMocks();
+    loggerErrorSpy.mockRestore();
+    loggerLogSpy.mockRestore();
   });
 
   it('should be defined', () => {
@@ -69,6 +77,9 @@ describe('FileProcessor', () => {
 
       expect(mockTasksService.findById).toHaveBeenCalledWith('non-existent');
       expect(mockTasksService.updateStatus).not.toHaveBeenCalled();
+      expect(loggerErrorSpy).toHaveBeenCalledWith(
+        'Task non-existent not found',
+      );
     });
 
     it('should update status to IN_PROGRESS when processing starts', async () => {
@@ -314,6 +325,9 @@ describe('FileProcessor', () => {
             message: 'File processing failed',
           }),
         ]),
+      );
+      expect(loggerErrorSpy).toHaveBeenCalledWith(
+        'Task task-123 failed: File corrupted',
       );
     });
 
