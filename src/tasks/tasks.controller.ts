@@ -15,6 +15,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { TasksService } from './tasks.service';
+import { UploadResponseDto, StatusResponseDto, ReportResponseDto } from './dto';
 
 @Controller('tasks')
 export class TasksController {
@@ -59,7 +60,9 @@ export class TasksController {
       },
     }),
   )
-  async uploadFile(@UploadedFile() file: Express.Multer.File) {
+  async uploadFile(
+    @UploadedFile() file: Express.Multer.File,
+  ): Promise<UploadResponseDto> {
     if (!file) {
       throw new BadRequestException('No file provided');
     }
@@ -84,7 +87,9 @@ export class TasksController {
    *   curl http://localhost:3000/tasks/status/507f1f77bcf86cd799439011
    */
   @Get('status/:taskId')
-  async getTaskStatus(@Param('taskId') taskId: string) {
+  async getTaskStatus(
+    @Param('taskId') taskId: string,
+  ): Promise<StatusResponseDto> {
     this.logger.log(`Getting status for task ${taskId}`);
 
     const task = await this.tasksService.findById(taskId);
@@ -96,8 +101,8 @@ export class TasksController {
     return {
       taskId: task._id.toString(),
       status: task.status,
-      createdAt: task.createdAt,
-      updatedAt: task.updatedAt,
+      createdAt: task.createdAt!,
+      updatedAt: task.updatedAt!,
       reportPath: task.reportPath,
     };
   }
@@ -111,7 +116,10 @@ export class TasksController {
    *   curl http://localhost:3000/tasks/report/507f1f77bcf86cd799439011
    */
   @Get('report/:taskId')
-  async getTaskReport(@Param('taskId') taskId: string, @Res() res: Response) {
+  async getTaskReport(
+    @Param('taskId') taskId: string,
+    @Res() res: Response,
+  ): Promise<void> {
     this.logger.log(`Getting report for task ${taskId}`);
 
     const task = await this.tasksService.findById(taskId);
@@ -121,12 +129,14 @@ export class TasksController {
     }
 
     if (!task.reportPath) {
-      return res.json({
+      const response: ReportResponseDto = {
         message: 'No errors found during processing',
         errors: [],
-      });
+      };
+      res.json(response);
+      return;
     }
 
-    return res.download(task.reportPath);
+    res.download(task.reportPath);
   }
 }

@@ -18,24 +18,12 @@ import { ApiKeyGuard } from '../src/common/guards/api-key.guard';
 import { TaskStatus } from '../src/tasks/schemas/task.schema';
 import { TASKS_QUEUE } from '../src/common/constants';
 import { ReportsService } from '../src/reports/reports.service';
-
-interface UploadResponse {
-  message: string;
-  taskId: string;
-}
-
-interface StatusResponse {
-  taskId: string;
-  status: string;
-  createdAt: string;
-  updatedAt: string;
-  reportPath: string;
-}
-
-interface ReportResponse {
-  message?: string;
-  errors: Array<{ row: number; reason: string; suggestion: string }>;
-}
+import {
+  UploadResponseDto,
+  StatusResponseDto,
+  ReportResponseDto,
+  ReportErrorItemDto,
+} from '../src/tasks/dto';
 
 interface ErrorResponse {
   message: string;
@@ -139,7 +127,7 @@ describe('TasksController (e2e)', () => {
         .attach('file', testFilePath)
         .expect(201);
 
-      const body = response.body as UploadResponse;
+      const body = response.body as UploadResponseDto;
 
       expect(body.message).toBe('File uploaded successfully');
       expect(body.taskId).toBeDefined();
@@ -156,7 +144,7 @@ describe('TasksController (e2e)', () => {
         .set('x-api-key', validApiKey)
         .expect(200);
 
-      const status = statusResponse.body as StatusResponse;
+      const status = statusResponse.body as StatusResponseDto;
       expect(status.status).toBe(TaskStatus.PENDING);
     });
 
@@ -213,7 +201,7 @@ describe('TasksController (e2e)', () => {
         .set('x-api-key', validApiKey)
         .expect(200);
 
-      const body = response.body as StatusResponse;
+      const body = response.body as StatusResponseDto;
 
       expect(body.taskId).toBe(taskId.toString());
       expect(body.status).toBe(TaskStatus.PENDING);
@@ -284,7 +272,7 @@ describe('TasksController (e2e)', () => {
         .expect(200);
 
       expect(response.headers['content-disposition']).toContain('attachment');
-      const body = JSON.parse(response.text) as ReportResponse['errors'];
+      const body = JSON.parse(response.text) as ReportErrorItemDto[];
       expect(body).toHaveLength(1);
       expect(body[0].row).toBe(2);
       expect(body[0].reason).toBe('Missing required field: guestName');
@@ -304,7 +292,7 @@ describe('TasksController (e2e)', () => {
         .set('x-api-key', validApiKey)
         .expect(200);
 
-      const body = response.body as ReportResponse;
+      const body = response.body as ReportResponseDto;
       expect(body.message).toBe('No errors found during processing');
       expect(body.errors).toEqual([]);
     });
