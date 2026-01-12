@@ -36,6 +36,7 @@ This project uses some simplified solutions for development purposes:
 | File Storage | Local disk (`./uploads` for uploaded files and `./reports` for generated reports) | AWS S3, Google Cloud Storage, Azure Blob |
 | Authentication | Single API key in env for all users                                               | JWT tokens, OAuth2, API keys per user/client stored in DB |
 | Reservation Processing | Each reservation is processed and written to the database one by one (sequentially) for reliability, error reporting, and simplicity. This is robust for most use cases. For very large files, batch processing (e.g., MongoDB `bulkWrite`) could be considered for higher throughput, but would require more complex error handling and reporting. | Batch processing with error aggregation and optimized DB writes |
+| Queue Worker | BullMQ worker runs in the same process as the HTTP server. Simple setup, but CPU-intensive jobs (like parsing large XLSX files) can block the event loop and make the API unresponsive. | Run workers in a separate process using BullMQ's sandboxed processor or a dedicated worker service for process isolation and independent scaling |
 
 > **Note:** Switching to cloud storage would require replacing `diskStorage` with a streaming upload to the cloud provider (e.g., using `multer-s3` for AWS S3).
 
